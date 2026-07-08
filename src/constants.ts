@@ -1,4 +1,4 @@
-import type { MediaPlayerCardType, RoomOrder, ThemeGrouping } from "./types";
+import type { MediaPlayerCardType, RoomOrder, SummaryColumns, ThemeGrouping } from "./types";
 
 export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
@@ -12,6 +12,9 @@ export const DEFAULT_SHOW_CAMERA_BUTTON = true;
 export const DEFAULT_ENABLE_SONOS_GROUPING = true;
 export const DEFAULT_THEME_GROUPING: ThemeGrouping = "state";
 export const DEFAULT_ROOM_ORDER: RoomOrder = "alphabetical";
+export const DEFAULT_SUMMARY_COLUMNS: SummaryColumns = 4;
+export const DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
+export const DEFAULT_BATTERY_CRITICAL_BELOW = 20;
 export const ROOMS_POPUP_HASH = "#rooms";
 
 export const DOMAIN_CARD_TYPES: Record<string, string> = {

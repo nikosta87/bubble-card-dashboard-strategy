@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_ENTITIES_PER_AREA } from "../constants";
+import { DEFAULT_MAX_ENTITIES_PER_AREA, DEFAULT_SUMMARY_COLUMNS } from "../constants";
 import type {
   HassArea,
   HassDevice,
@@ -17,7 +17,7 @@ import {
   getAreaEntities,
   getRoomHash,
 } from "../utils/entities";
-import { buildThemeNavigation, buildThemePopups, getActiveThemes } from "./theme-views";
+import { buildSummaryNavigation, buildSummaryPopups, getActiveSummaries } from "./summaries";
 
 export function buildHomeView(
   areas: HassArea[],
@@ -27,7 +27,8 @@ export function buildHomeView(
   options: StrategyConfig,
   sonosEntities: string[] = [],
 ) {
-  const activeThemes = getActiveThemes(areas, entities, devices, hass, options);
+  const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
+  const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
 
   return {
@@ -48,10 +49,10 @@ export function buildHomeView(
                 },
               ]
             : []),
-          ...(activeThemes.length ? [buildThemeNavigation(activeThemes)] : []),
+          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns)] : []),
           ...buildRoomsSection(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
-          ...buildThemePopups(activeThemes, hass, options, sonosEntities),
+          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities),
         ],
       },
     ],

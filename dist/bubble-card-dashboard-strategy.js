@@ -10,6 +10,9 @@ var DEFAULT_SHOW_CAMERA_BUTTON = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
 var DEFAULT_THEME_GROUPING = "state";
 var DEFAULT_ROOM_ORDER = "alphabetical";
+var DEFAULT_SUMMARY_COLUMNS = 4;
+var DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
+var DEFAULT_BATTERY_CRITICAL_BELOW = 20;
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
   alarm_control_panel: "button",
@@ -235,6 +238,15 @@ function getRoomHash(area) {
 }
 
 // src/editor.ts
+var BOOLEAN_FIELDS = /* @__PURE__ */ new Set([
+  "show_camera_button",
+  "enable_sonos_grouping",
+  "show_light_summary",
+  "show_security_summary",
+  "show_climate_summary",
+  "show_battery_summary",
+  "hide_mobile_app_batteries"
+]);
 var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   _config = {};
   _hass;
@@ -290,6 +302,13 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
+    const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
+    const showLightSummary = this._config.show_light_summary ?? true;
+    const showSecuritySummary = this._config.show_security_summary ?? true;
+    const showClimateSummary = this._config.show_climate_summary ?? true;
+    const showBatterySummary = this._config.show_battery_summary ?? true;
+    const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
+    const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
     this.innerHTML = `
       <style>
         :host {
@@ -328,6 +347,24 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           color: var(--primary-text-color);
           font: inherit;
           padding: 10px 12px;
+        }
+
+        input[type="checkbox"],
+        input[type="radio"] {
+          width: auto;
+        }
+
+        .radio-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .radio-group label {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 400;
         }
 
         .hint {
@@ -466,6 +503,45 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       </div>
 
       <div class="section">
+        <div class="section-title">Summaries</div>
+        <div class="field">
+          <label>Summary layout</label>
+          <div class="radio-group">
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
+          </div>
+          <div class="hint">Choose how the summary buttons are arranged. The layout adjusts automatically when summaries are hidden.</div>
+        </div>
+        <div class="field">
+          <label for="show_light_summary">Light summary</label>
+          <input id="show_light_summary" data-field="show_light_summary" type="checkbox" ${showLightSummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="show_security_summary">Security summary</label>
+          <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
+          <div class="hint">Shows motion, door/window, smoke and gas sensors plus locks and alarm panels, grouped into active and clear.</div>
+        </div>
+        <div class="field">
+          <label for="show_climate_summary">Climate summary</label>
+          <input id="show_climate_summary" data-field="show_climate_summary" type="checkbox" ${showClimateSummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="show_battery_summary">Battery summary</label>
+          <input id="show_battery_summary" data-field="show_battery_summary" type="checkbox" ${showBatterySummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="hide_mobile_app_batteries">Hide mobile app batteries</label>
+          <input id="hide_mobile_app_batteries" data-field="hide_mobile_app_batteries" type="checkbox" ${hideMobileBatteries ? "checked" : ""}>
+          <div class="hint">Hides phone, tablet and watch batteries (Mobile App) from the battery summary.</div>
+        </div>
+        <div class="field">
+          <label for="battery_critical_below">Battery critical below</label>
+          <input id="battery_critical_below" data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">
+          <div class="hint">Batteries below this percentage appear in the Critical group.</div>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section-title">Theme views</div>
         <div class="field">
           <label for="theme_grouping">Group entities by</label>
@@ -530,7 +606,15 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }
-    if (field === "show_camera_button" || field === "enable_sonos_grouping") {
+    if (field === "battery_critical_below") {
+      this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
+      return;
+    }
+    if (field === "summary_columns") {
+      this.updateConfig(field, Number(target.value));
+      return;
+    }
+    if (BOOLEAN_FIELDS.has(field)) {
       this.updateConfig(field, target.checked);
       return;
     }
@@ -836,112 +920,139 @@ function navigationSubButton(name, icon, navigationPath) {
 }
 
 // src/cards/auto-entities.ts
-function autoEntitiesGrid(columns, include) {
+function autoEntitiesGrid(config) {
   return {
     type: "custom:auto-entities",
     card: {
       type: "grid",
       square: false,
-      columns
+      columns: config.columns
     },
     card_param: "cards",
     show_empty: false,
     filter: {
-      include
+      include: config.include,
+      ...config.exclude ? { exclude: config.exclude } : {}
     },
-    sort: {
-      method: "friendly_name"
-    }
+    sort: config.sort ?? { method: "friendly_name" }
   };
 }
 
-// src/views/theme-views.ts
+// src/views/summaries.ts
 var DOMAIN_STATE_BUCKETS = {
   light: { on: ["on"], off: ["off"] },
-  cover: { on: ["open"], off: ["closed"] },
   climate: { on: ["heat", "cool", "heat_cool", "auto", "dry", "fan_only"], off: ["off"] },
   fan: { on: ["on"], off: ["off"] },
-  humidifier: { on: ["on"], off: ["off"] },
-  media_player: { on: ["playing", "paused", "on"], off: ["idle", "standby", "off"] }
+  humidifier: { on: ["on"], off: ["off"] }
 };
-var THEME_DEFINITIONS = [
+var SECURITY_DEVICE_CLASSES = [
+  "motion",
+  "occupancy",
+  "moving",
+  "presence",
+  "door",
+  "garage_door",
+  "window",
+  "opening",
+  "smoke",
+  "gas",
+  "carbon_monoxide",
+  "moisture",
+  "safety",
+  "tamper",
+  "vibration",
+  "sound"
+];
+var SUMMARIES = [
   {
+    kind: "domain",
     id: "lights",
     title: "Lights",
     icon: "mdi:lightbulb-group",
+    configKey: "show_light_summary",
     domains: ["light"],
     columns: 2
   },
   {
-    id: "covers",
-    title: "Covers",
-    icon: "mdi:window-shutter",
-    domains: ["cover"],
-    columns: 1
+    kind: "security",
+    id: "security",
+    title: "Security",
+    icon: "mdi:shield-home",
+    configKey: "show_security_summary"
   },
   {
+    kind: "domain",
     id: "climate",
     title: "Climate",
     icon: "mdi:thermostat",
+    configKey: "show_climate_summary",
     domains: ["climate", "fan", "humidifier"],
     columns: 2
   },
   {
-    id: "media",
-    title: "Media",
-    icon: "mdi:speaker",
-    domains: ["media_player"],
-    columns: 2
+    kind: "battery",
+    id: "batteries",
+    title: "Batteries",
+    icon: "mdi:battery-50",
+    configKey: "show_battery_summary"
   }
 ];
-function getActiveThemes(areas, entities, devices, hass, options) {
-  return THEME_DEFINITIONS.map((theme) => {
-    const entries = [];
-    areas.forEach((area) => {
-      getAreaEntities(area.area_id, entities, devices, hass, options).filter((entity) => theme.domains.includes(getDomain(entity.entity_id))).forEach((entity) => entries.push({ area, entity }));
-    });
-    return { ...theme, entries };
-  }).filter((theme) => theme.entries.length > 0);
+function getActiveSummaries(areas, entities, devices, hass, options) {
+  return SUMMARIES.filter((summary) => isSummaryEnabled(summary, options)).map((summary) => ({ ...summary, entries: resolveEntries(summary, areas, entities, devices, hass, options) })).filter((summary) => summaryHasContent(summary, hass));
 }
-function buildThemeNavigation(themes) {
+function isSummaryEnabled(summary, options) {
+  const value = options[summary.configKey];
+  return value === void 0 ? true : Boolean(value);
+}
+function resolveEntries(summary, areas, entities, devices, hass, options) {
+  if (summary.kind !== "domain") {
+    return [];
+  }
+  const entries = [];
+  areas.forEach((area) => {
+    getAreaEntities(area.area_id, entities, devices, hass, options).filter((entity) => summary.domains.includes(getDomain(entity.entity_id))).forEach((entity) => entries.push({ area, entity }));
+  });
+  return entries;
+}
+function summaryHasContent(summary, hass) {
+  if (summary.kind === "domain") {
+    return summary.entries.length > 0;
+  }
+  const predicate = summary.kind === "security" ? isSecurityState : isBatteryState;
+  return Object.values(hass.states).some(predicate);
+}
+function isSecurityState(state) {
+  const domain = getDomain(state.entity_id);
+  if (domain === "lock" || domain === "alarm_control_panel") {
+    return true;
+  }
+  if (domain === "binary_sensor") {
+    return SECURITY_DEVICE_CLASSES.includes(String(state.attributes.device_class ?? ""));
+  }
+  return false;
+}
+function isBatteryState(state) {
+  return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
+}
+function buildSummaryNavigation(summaries, columns) {
   return {
-    type: "custom:bubble-card",
-    card_type: "sub-buttons",
-    hide_main_background: true,
-    rows: 0.92,
-    sub_button: {
-      main: [],
-      bottom: [
-        {
-          buttons_layout: "inline",
-          justify_content: "center",
-          group: themes.map((theme) => ({
-            name: theme.title,
-            icon: theme.icon,
-            show_name: true,
-            fill_width: false,
-            tap_action: {
-              action: "navigate",
-              navigation_path: `#${theme.id}`
-            }
-          }))
-        }
-      ]
-    }
+    type: "grid",
+    square: false,
+    columns,
+    cards: summaries.map((summary) => buttonToHash(summary.title, summary.icon, `#${summary.id}`))
   };
 }
-function buildThemePopups(themes, hass, options, sonosEntities = []) {
-  const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
-  return themes.map((theme) => buildThemePopup(theme, grouping, hass, options, sonosEntities));
+function buildSummaryPopups(summaries, hass, options, sonosEntities = []) {
+  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities));
 }
-function buildThemePopup(theme, grouping, hass, options, sonosEntities) {
-  const cards = grouping === "state" ? buildStateGroupedCards(theme) : buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities);
+function buildSummaryPopup(summary, hass, options, sonosEntities) {
+  const cards = buildSummaryCards(summary, hass, options, sonosEntities);
   return {
     type: "custom:bubble-card",
     card_type: "pop-up",
-    hash: `#${theme.id}`,
-    name: theme.title,
-    icon: theme.icon,
+    hash: `#${summary.id}`,
+    name: summary.title,
+    icon: summary.icon,
     popup_mode: "centered",
     width_desktop: "680px",
     bg_opacity: "85",
@@ -951,12 +1062,19 @@ function buildThemePopup(theme, grouping, hass, options, sonosEntities) {
     cards
   };
 }
-function buildStateGroupedCards(theme) {
+function buildSummaryCards(summary, hass, options, sonosEntities) {
+  if (summary.kind !== "domain") {
+    return summary.kind === "security" ? buildSecurityCards() : buildBatteryCards(options);
+  }
+  const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
+  return grouping === "state" ? buildStateGroupedCards(summary) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
+}
+function buildStateGroupedCards(summary) {
   return [
     bubbleSeparator("On", "mdi:toggle-switch"),
-    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "on")),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on") }),
     bubbleSeparator("Off", "mdi:toggle-switch-off-outline"),
-    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "off"))
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off") })
   ];
 }
 function buildStateIncludes(domains, bucket) {
@@ -968,8 +1086,8 @@ function buildStateIncludes(domains, bucket) {
     }))
   );
 }
-function buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities) {
-  const sections = groupThemeEntries(theme, grouping, hass);
+function buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities) {
+  const sections = groupEntries(summary, grouping, hass);
   const cards = [];
   sections.forEach((section) => {
     if (section.title) {
@@ -978,20 +1096,20 @@ function buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities) 
     cards.push({
       type: "grid",
       square: false,
-      columns: theme.columns,
+      columns: summary.columns,
       cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities))
     });
   });
   return cards;
 }
-function groupThemeEntries(theme, grouping, hass) {
+function groupEntries(summary, grouping, hass) {
   if (grouping === "none") {
-    const entities = [...theme.entries].map((entry) => entry.entity).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
+    const entities = [...summary.entries].map((entry) => entry.entity).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
     return [{ title: null, icon: "", entities }];
   }
   const sections = [];
   const indexByArea = /* @__PURE__ */ new Map();
-  theme.entries.forEach((entry) => {
+  summary.entries.forEach((entry) => {
     let index = indexByArea.get(entry.area.area_id);
     if (index === void 0) {
       index = sections.length;
@@ -1002,10 +1120,57 @@ function groupThemeEntries(theme, grouping, hass) {
   });
   return sections;
 }
+function buildSecurityCards() {
+  const buttonTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
+  const lockTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
+  const alarmTemplate = { type: "custom:bubble-card", card_type: "button" };
+  const activeIncludes = [
+    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
+      domain: "binary_sensor",
+      attributes: { device_class: deviceClass },
+      state: "on",
+      options: buttonTemplate
+    })),
+    { domain: "lock", state: "unlocked", options: lockTemplate },
+    { domain: "alarm_control_panel", options: alarmTemplate }
+  ];
+  const clearIncludes = [
+    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
+      domain: "binary_sensor",
+      attributes: { device_class: deviceClass },
+      state: "off",
+      options: buttonTemplate
+    })),
+    { domain: "lock", state: "locked", options: lockTemplate }
+  ];
+  return [
+    bubbleSeparator("Active", "mdi:shield-alert"),
+    autoEntitiesGrid({ columns: 2, include: activeIncludes }),
+    bubbleSeparator("Clear", "mdi:shield-check"),
+    autoEntitiesGrid({ columns: 2, include: clearIncludes })
+  ];
+}
+function buildBatteryCards(options) {
+  const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
+  const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+  const hideMobile = options.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
+  const exclude = hideMobile ? [{ integration: "mobile_app" }] : void 0;
+  const sort = { method: "state", numeric: true };
+  const batteryInclude = (state) => [
+    { domain: "sensor", attributes: { device_class: "battery" }, state, options: template }
+  ];
+  return [
+    bubbleSeparator("Critical", "mdi:battery-alert"),
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${threshold}`), exclude, sort }),
+    bubbleSeparator("OK", "mdi:battery"),
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${threshold}`), exclude, sort })
+  ];
+}
 
 // src/views/home-view.ts
 function buildHomeView(areas, entities, devices, hass, options, sonosEntities = []) {
-  const activeThemes = getActiveThemes(areas, entities, devices, hass, options);
+  const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
+  const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
   return {
     type: "sections",
@@ -1023,10 +1188,10 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
               cards: overviewCards
             }
           ] : [],
-          ...activeThemes.length ? [buildThemeNavigation(activeThemes)] : [],
+          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns)] : [],
           ...buildRoomsSection(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
-          ...buildThemePopups(activeThemes, hass, options, sonosEntities)
+          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities)
         ]
       }
     ]

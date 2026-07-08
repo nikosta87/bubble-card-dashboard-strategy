@@ -52,6 +52,8 @@ export type ThemeGrouping = "area" | "state" | "none";
 
 export type RoomOrder = "home_assistant" | "alphabetical" | "custom";
 
+export type SummaryColumns = 2 | 4;
+
 export type StrategyConfig = {
   title?: string;
   profile_image?: string;
@@ -66,6 +68,13 @@ export type StrategyConfig = {
   room_order?: RoomOrder;
   hidden_areas?: string[];
   custom_room_order?: string[];
+  summary_columns?: SummaryColumns;
+  show_light_summary?: boolean;
+  show_security_summary?: boolean;
+  show_climate_summary?: boolean;
+  show_battery_summary?: boolean;
+  hide_mobile_app_batteries?: boolean;
+  battery_critical_below?: number;
 };
 
 export type LovelaceCard = Record<string, unknown>;
