@@ -3,12 +3,13 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.15.0";
+var VERSION = "0.16.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
 var DEFAULT_THEME_GROUPING = "area";
+var DEFAULT_ROOM_ORDER = "alphabetical";
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
   alarm_control_panel: "button",
@@ -96,6 +97,55 @@ function shouldAddSonosGrouping(options, sonosEntities) {
   return (options.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING) && sonosEntities.length > 1;
 }
 
+// src/registry.ts
+var CACHE_TTL_MS = 3e4;
+var REGISTRY_EVENTS = [
+  "area_registry_updated",
+  "device_registry_updated",
+  "entity_registry_updated"
+];
+var cache = null;
+var subscribed = false;
+async function getRegistries(hass, options = {}) {
+  ensureInvalidationSubscription(hass);
+  const now = Date.now();
+  if (!options.force && cache && now - cache.timestamp < CACHE_TTL_MS) {
+    return cache.promise;
+  }
+  const promise = loadRegistries(hass);
+  const entry = { timestamp: now, promise };
+  cache = entry;
+  try {
+    return await promise;
+  } catch (error) {
+    if (cache === entry) {
+      cache = null;
+    }
+    throw error;
+  }
+}
+function invalidateRegistries() {
+  cache = null;
+}
+async function loadRegistries(hass) {
+  const [areas, devices, entities] = await Promise.all([
+    hass.callWS({ type: "config/area_registry/list" }),
+    hass.callWS({ type: "config/device_registry/list" }),
+    hass.callWS({ type: "config/entity_registry/list" })
+  ]);
+  return { areas, devices, entities };
+}
+function ensureInvalidationSubscription(hass) {
+  if (subscribed || !hass.connection?.subscribeEvents) {
+    return;
+  }
+  subscribed = true;
+  for (const eventType of REGISTRY_EVENTS) {
+    hass.connection.subscribeEvents(() => invalidateRegistries(), eventType).catch(() => {
+    });
+  }
+}
+
 // src/utils/format.ts
 function clampNumber(value, min, max) {
   if (Number.isNaN(value)) {
@@ -110,12 +160,90 @@ function slugify(value) {
   return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+// src/utils/entities.ts
+function getDomain(entityId) {
+  return entityId.split(".", 1)[0] || "";
+}
+function getActiveAreas(areas, entities, devices) {
+  return areas.filter((area) => entities.some((entity) => entityBelongsToArea(entity, area.area_id, devices)));
+}
+function sortAreas(areas, order, customOrder) {
+  if (order === "alphabetical") {
+    return [...areas].sort((left, right) => left.name.localeCompare(right.name));
+  }
+  if (order === "custom") {
+    const rank = (areaId) => {
+      const index = customOrder.indexOf(areaId);
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    return [...areas].sort((left, right) => rank(left.area_id) - rank(right.area_id) || left.name.localeCompare(right.name));
+  }
+  return [...areas];
+}
+function orderAreas(areas, options) {
+  const hidden = new Set(options.hidden_areas ?? []);
+  const visible = areas.filter((area) => !hidden.has(area.area_id));
+  return sortAreas(visible, options.room_order ?? DEFAULT_ROOM_ORDER, options.custom_room_order ?? []);
+}
+function entityBelongsToArea(entity, areaId, devices) {
+  if (entity.area_id === areaId) {
+    return true;
+  }
+  if (!entity.area_id && entity.device_id) {
+    return devices.some((device) => device.id === entity.device_id && device.area_id === areaId && !device.disabled_by);
+  }
+  return false;
+}
+function getAreaEntities(areaId, entities, devices, hass, options) {
+  const ignoredEntities = new Set(options.ignored_entities ?? []);
+  const ignoredDomains = /* @__PURE__ */ new Set([...options.ignored_domains ?? [], ...DEFAULT_IGNORED_DOMAINS]);
+  return entities.filter((entity) => entityBelongsToArea(entity, areaId, devices)).filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id))).filter((entity) => DOMAIN_CARD_TYPES[getDomain(entity.entity_id)]).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
+}
+function findPrimaryEntityForArea(areaId, entities, devices) {
+  return entities.find((entity) => {
+    const domain = getDomain(entity.entity_id);
+    return ["light", "switch", "climate", "cover"].includes(domain) && entityBelongsToArea(entity, areaId, devices);
+  });
+}
+function getFriendlyName(entity, hass) {
+  const state = hass.states[entity.entity_id];
+  const friendlyName = state?.attributes.friendly_name;
+  return String(friendlyName || entity.name || entity.original_name || entity.entity_id);
+}
+function findStateEntities(hass, domains) {
+  return Object.keys(hass.states).filter((entityId) => domains.includes(getDomain(entityId))).sort();
+}
+function findFirstStateEntity(hass, domains) {
+  return findStateEntities(hass, domains)[0];
+}
+function getSonosMediaPlayers(entities, options) {
+  return [
+    .../* @__PURE__ */ new Set([
+      ...entities.filter(isSonosMediaPlayer).map((entity) => entity.entity_id),
+      ...(options.sonos_entities || []).filter((entityId) => getDomain(entityId) === "media_player")
+    ])
+  ].sort();
+}
+function isSonosMediaPlayer(entity) {
+  return getDomain(entity.entity_id) === "media_player" && entity.platform === "sonos";
+}
+function getUserInitial(hass) {
+  return (hass.user?.name || "?").trim().slice(0, 1).toUpperCase() || "?";
+}
+function getRoomHash(area) {
+  return `#room-${slugify(area.name || area.area_id)}`;
+}
+
 // src/editor.ts
 var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   _config = {};
   _hass;
+  _areas = [];
+  _areasLoaded = false;
+  _areasLoading = false;
   set hass(hass) {
     this._hass = hass;
+    this.loadAreas();
     this.render();
   }
   setConfig(config) {
@@ -125,6 +253,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
       theme_grouping: DEFAULT_THEME_GROUPING,
+      room_order: DEFAULT_ROOM_ORDER,
       ...config
     };
     this.render();
@@ -132,12 +261,31 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   connectedCallback() {
     this.render();
   }
+  async loadAreas() {
+    if (!this._hass || this._areasLoaded || this._areasLoading) {
+      return;
+    }
+    this._areasLoading = true;
+    try {
+      const { areas, devices, entities } = await getRegistries(this._hass);
+      this._areas = getActiveAreas(areas, entities, devices);
+      this._areasLoaded = true;
+      this.render();
+    } catch {
+    } finally {
+      this._areasLoading = false;
+    }
+  }
+  orderedAreasForDisplay() {
+    return sortAreas(this._areas, this._config.room_order ?? DEFAULT_ROOM_ORDER, this._config.custom_room_order ?? []);
+  }
   render() {
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
+    const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
     this.innerHTML = `
       <style>
         :host {
@@ -184,6 +332,61 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           font-size: 0.9em;
           line-height: 1.4;
           margin-top: 2px;
+        }
+
+        .room-list {
+          margin-top: 12px;
+          border: 1px solid var(--divider-color);
+          border-radius: 6px;
+          overflow: hidden;
+        }
+
+        .room-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 12px;
+          border-bottom: 1px solid var(--divider-color);
+        }
+
+        .room-row:last-child {
+          border-bottom: none;
+        }
+
+        .room-row input[type="checkbox"] {
+          width: auto;
+          margin: 0;
+        }
+
+        .room-name {
+          flex: 1;
+        }
+
+        .room-actions {
+          display: flex;
+          gap: 6px;
+        }
+
+        .room-actions button {
+          width: 32px;
+          height: 32px;
+          padding: 0;
+          border: 1px solid var(--divider-color);
+          border-radius: 6px;
+          background: var(--secondary-background-color);
+          color: var(--primary-text-color);
+          font: inherit;
+          cursor: pointer;
+        }
+
+        .room-actions button[disabled] {
+          opacity: 0.4;
+          cursor: default;
+        }
+
+        .room-empty {
+          padding: 12px;
+          color: var(--secondary-text-color);
         }
 
         @media (max-width: 640px) {
@@ -246,6 +449,16 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <input id="max_entities_per_area" data-field="max_entities_per_area" type="number" min="1" max="100" value="${maxEntities}">
           <div class="hint">Limits how many generated entity cards are shown inside each room pop-up.</div>
         </div>
+        <div class="field">
+          <label for="room_order">Room order</label>
+          <select id="room_order" data-field="room_order">
+            ${roomOrderOption("home_assistant", "Home Assistant order", roomOrder)}
+            ${roomOrderOption("alphabetical", "Alphabetical", roomOrder)}
+            ${roomOrderOption("custom", "Custom", roomOrder)}
+          </select>
+          <div class="hint">Choose how rooms are ordered. Select "Custom" to arrange them with the arrows below.</div>
+        </div>
+        ${this.renderRoomList(roomOrder)}
       </div>
 
       <div class="section">
@@ -265,6 +478,37 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       element.addEventListener("change", (event) => this.handleChange(event));
       element.addEventListener("input", (event) => this.handleInput(event));
     });
+    this.querySelectorAll("[data-room-visible]").forEach((element) => {
+      element.addEventListener("change", (event) => this.handleRoomVisibility(event));
+    });
+    this.querySelectorAll("[data-room-move]").forEach((element) => {
+      element.addEventListener("click", (event) => this.handleRoomMove(event));
+    });
+  }
+  renderRoomList(roomOrder) {
+    if (!this._areasLoaded) {
+      return `<div class="room-list"><div class="room-empty">Loading rooms\u2026</div></div>`;
+    }
+    if (!this._areas.length) {
+      return `<div class="room-list"><div class="room-empty">No rooms with entities found.</div></div>`;
+    }
+    const hiddenAreas = new Set(this._config.hidden_areas ?? []);
+    const orderedAreas = this.orderedAreasForDisplay();
+    const showMoveButtons = roomOrder === "custom";
+    const rows = orderedAreas.map((area, index) => {
+      const areaId = escapeHtml(area.area_id);
+      const actions = showMoveButtons ? `<span class="room-actions">
+              <button type="button" data-room-move="up" data-area="${areaId}" ${index === 0 ? "disabled" : ""} aria-label="Move up">\u2191</button>
+              <button type="button" data-room-move="down" data-area="${areaId}" ${index === orderedAreas.length - 1 ? "disabled" : ""} aria-label="Move down">\u2193</button>
+            </span>` : "";
+      return `
+          <div class="room-row">
+            <input type="checkbox" data-room-visible="${areaId}" ${hiddenAreas.has(area.area_id) ? "" : "checked"}>
+            <span class="room-name">${escapeHtml(area.name)}</span>
+            ${actions}
+          </div>`;
+    }).join("");
+    return `<div class="room-list">${rows}</div>`;
   }
   handleInput(event) {
     const target = event.target;
@@ -286,7 +530,44 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       this.updateConfig(field, target.checked);
       return;
     }
+    if (field === "room_order") {
+      this.updateConfig(field, target.value);
+      this.render();
+      return;
+    }
     this.updateConfig(field, target.value);
+  }
+  handleRoomVisibility(event) {
+    const target = event.target;
+    const areaId = target.dataset.roomVisible;
+    if (!areaId) {
+      return;
+    }
+    const hidden = new Set(this._config.hidden_areas ?? []);
+    if (target.checked) {
+      hidden.delete(areaId);
+    } else {
+      hidden.add(areaId);
+    }
+    const hiddenList = [...hidden];
+    this.updateConfig("hidden_areas", hiddenList.length ? hiddenList : void 0);
+  }
+  handleRoomMove(event) {
+    const target = event.currentTarget;
+    const areaId = target.dataset.area;
+    const direction = target.dataset.roomMove;
+    if (!areaId || direction !== "up" && direction !== "down") {
+      return;
+    }
+    const order = this.orderedAreasForDisplay().map((area) => area.area_id);
+    const index = order.indexOf(areaId);
+    const target_index = direction === "up" ? index - 1 : index + 1;
+    if (index === -1 || target_index < 0 || target_index >= order.length) {
+      return;
+    }
+    [order[index], order[target_index]] = [order[target_index], order[index]];
+    this.updateConfig("custom_room_order", order);
+    this.render();
   }
   updateConfig(field, value) {
     const nextConfig = {
@@ -314,107 +595,8 @@ function mediaPlayerCardOption(value, label, selectedValue) {
 function themeGroupingOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
-
-// src/registry.ts
-var CACHE_TTL_MS = 3e4;
-var REGISTRY_EVENTS = [
-  "area_registry_updated",
-  "device_registry_updated",
-  "entity_registry_updated"
-];
-var cache = null;
-var subscribed = false;
-async function getRegistries(hass, options = {}) {
-  ensureInvalidationSubscription(hass);
-  const now = Date.now();
-  if (!options.force && cache && now - cache.timestamp < CACHE_TTL_MS) {
-    return cache.promise;
-  }
-  const promise = loadRegistries(hass);
-  const entry = { timestamp: now, promise };
-  cache = entry;
-  try {
-    return await promise;
-  } catch (error) {
-    if (cache === entry) {
-      cache = null;
-    }
-    throw error;
-  }
-}
-function invalidateRegistries() {
-  cache = null;
-}
-async function loadRegistries(hass) {
-  const [areas, devices, entities] = await Promise.all([
-    hass.callWS({ type: "config/area_registry/list" }),
-    hass.callWS({ type: "config/device_registry/list" }),
-    hass.callWS({ type: "config/entity_registry/list" })
-  ]);
-  return { areas, devices, entities };
-}
-function ensureInvalidationSubscription(hass) {
-  if (subscribed || !hass.connection?.subscribeEvents) {
-    return;
-  }
-  subscribed = true;
-  for (const eventType of REGISTRY_EVENTS) {
-    hass.connection.subscribeEvents(() => invalidateRegistries(), eventType).catch(() => {
-    });
-  }
-}
-
-// src/utils/entities.ts
-function getDomain(entityId) {
-  return entityId.split(".", 1)[0] || "";
-}
-function entityBelongsToArea(entity, areaId, devices) {
-  if (entity.area_id === areaId) {
-    return true;
-  }
-  if (!entity.area_id && entity.device_id) {
-    return devices.some((device) => device.id === entity.device_id && device.area_id === areaId && !device.disabled_by);
-  }
-  return false;
-}
-function getAreaEntities(areaId, entities, devices, hass, options) {
-  const ignoredEntities = new Set(options.ignored_entities ?? []);
-  const ignoredDomains = /* @__PURE__ */ new Set([...options.ignored_domains ?? [], ...DEFAULT_IGNORED_DOMAINS]);
-  return entities.filter((entity) => entityBelongsToArea(entity, areaId, devices)).filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id))).filter((entity) => DOMAIN_CARD_TYPES[getDomain(entity.entity_id)]).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
-}
-function findPrimaryEntityForArea(areaId, entities, devices) {
-  return entities.find((entity) => {
-    const domain = getDomain(entity.entity_id);
-    return ["light", "switch", "climate", "cover"].includes(domain) && entityBelongsToArea(entity, areaId, devices);
-  });
-}
-function getFriendlyName(entity, hass) {
-  const state = hass.states[entity.entity_id];
-  const friendlyName = state?.attributes.friendly_name;
-  return String(friendlyName || entity.name || entity.original_name || entity.entity_id);
-}
-function findStateEntities(hass, domains) {
-  return Object.keys(hass.states).filter((entityId) => domains.includes(getDomain(entityId))).sort();
-}
-function findFirstStateEntity(hass, domains) {
-  return findStateEntities(hass, domains)[0];
-}
-function getSonosMediaPlayers(entities, options) {
-  return [
-    .../* @__PURE__ */ new Set([
-      ...entities.filter(isSonosMediaPlayer).map((entity) => entity.entity_id),
-      ...(options.sonos_entities || []).filter((entityId) => getDomain(entityId) === "media_player")
-    ])
-  ].sort();
-}
-function isSonosMediaPlayer(entity) {
-  return getDomain(entity.entity_id) === "media_player" && entity.platform === "sonos";
-}
-function getUserInitial(hass) {
-  return (hass.user?.name || "?").trim().slice(0, 1).toUpperCase() || "?";
-}
-function getRoomHash(area) {
-  return `#room-${slugify(area.name || area.area_id)}`;
+function roomOrderOption(value, label, selectedValue) {
+  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
 // src/cards/common.ts
@@ -899,7 +1081,7 @@ var BubbleDashboardStrategy = class extends HTMLElement {
   }
   static async generate(config, hass) {
     const { areas, devices, entities } = await getRegistries(hass);
-    const activeAreas = areas.filter((area) => entities.some((entity) => entityBelongsToArea(entity, area.area_id, devices))).sort((left, right) => left.name.localeCompare(right.name));
+    const activeAreas = orderAreas(getActiveAreas(areas, entities, devices), config);
     return {
       title: config.title || hass.config.location_name || "Bubble Card Dashboard",
       views: [
