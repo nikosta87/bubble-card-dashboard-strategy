@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.13.0";
+var VERSION = "0.14.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
@@ -668,8 +668,108 @@ function navigationSubButton(name, icon, navigationPath) {
   };
 }
 
+// src/views/theme-views.ts
+var THEME_DEFINITIONS = [
+  {
+    id: "lights",
+    title: "Lights",
+    icon: "mdi:lightbulb-group",
+    domains: ["light"],
+    columns: 2
+  },
+  {
+    id: "covers",
+    title: "Covers",
+    icon: "mdi:window-shutter",
+    domains: ["cover"],
+    columns: 1
+  },
+  {
+    id: "climate",
+    title: "Climate",
+    icon: "mdi:thermostat",
+    domains: ["climate", "fan", "humidifier"],
+    columns: 2
+  },
+  {
+    id: "media",
+    title: "Media",
+    icon: "mdi:speaker",
+    domains: ["media_player"],
+    columns: 2
+  }
+];
+function getActiveThemes(areas, entities, devices, hass, options) {
+  return THEME_DEFINITIONS.map((theme) => {
+    const themeAreas = areas.map((area) => ({
+      area,
+      entities: getAreaEntities(area.area_id, entities, devices, hass, options).filter(
+        (entity) => theme.domains.includes(getDomain(entity.entity_id))
+      )
+    })).filter((group) => group.entities.length > 0);
+    return { ...theme, areas: themeAreas };
+  }).filter((theme) => theme.areas.length > 0);
+}
+function buildThemeNavigation(themes) {
+  return {
+    type: "custom:bubble-card",
+    card_type: "sub-buttons",
+    hide_main_background: true,
+    rows: 0.92,
+    sub_button: {
+      main: [],
+      bottom: [
+        {
+          buttons_layout: "inline",
+          justify_content: "center",
+          group: themes.map((theme) => ({
+            name: theme.title,
+            icon: theme.icon,
+            show_name: true,
+            fill_width: false,
+            tap_action: {
+              action: "navigate",
+              navigation_path: `#${theme.id}`
+            }
+          }))
+        }
+      ]
+    }
+  };
+}
+function buildThemePopups(themes, options, sonosEntities = []) {
+  return themes.map((theme) => buildThemePopup(theme, options, sonosEntities));
+}
+function buildThemePopup(theme, options, sonosEntities) {
+  const cards = [];
+  theme.areas.forEach((group) => {
+    cards.push(bubbleSeparator(group.area.name, group.area.icon || "mdi:home-outline"));
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: theme.columns,
+      cards: group.entities.map((entity) => entityToCard(entity, options, sonosEntities))
+    });
+  });
+  return {
+    type: "custom:bubble-card",
+    card_type: "pop-up",
+    hash: `#${theme.id}`,
+    name: theme.title,
+    icon: theme.icon,
+    popup_mode: "centered",
+    width_desktop: "680px",
+    bg_opacity: "85",
+    bg_blur: "12",
+    show_previous_button: true,
+    close_by_clicking_outside: true,
+    cards
+  };
+}
+
 // src/views/home-view.ts
 function buildHomeView(areas, entities, devices, hass, options, sonosEntities = []) {
+  const activeThemes = getActiveThemes(areas, entities, devices, hass, options);
   return {
     type: "sections",
     max_columns: 2,
@@ -684,8 +784,10 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
             columns: 2,
             cards: buildOverviewCards(entities, hass, options, sonosEntities)
           },
+          ...activeThemes.length ? [buildThemeNavigation(activeThemes)] : [],
           buildRoomsPopup(areas, entities, devices),
-          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities))
+          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
+          ...buildThemePopups(activeThemes, options, sonosEntities)
         ]
       }
     ]
