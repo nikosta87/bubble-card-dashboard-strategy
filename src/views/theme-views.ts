@@ -8,8 +8,9 @@ import type {
   StrategyConfig,
   ThemeGrouping,
 } from "../types";
+import { autoEntitiesGrid, type AutoEntitiesFilter } from "../cards/auto-entities";
 import { bubbleSeparator } from "../cards/common";
-import { entityToCard } from "../cards/entity-cards";
+import { entityCardTemplate, entityToCard } from "../cards/entity-cards";
 import { getAreaEntities, getDomain, getFriendlyName } from "../utils/entities";
 
 // Theme views group the whole home by function ("all lights", "all covers", ...)
@@ -33,9 +34,16 @@ type ActiveTheme = ThemeDefinition & {
   entries: ThemeEntry[];
 };
 
-// States that count as "on"/active when grouping by status. Everything else
-// (off, closed, idle, unavailable, ...) is treated as inactive.
-const ACTIVE_STATES = new Set(["on", "open", "playing", "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "home", "cleaning"]);
+// The states that count as "on"/active per domain when grouping by status.
+// Used to build the auto-entities filters for the On and Off groups.
+const DOMAIN_STATE_BUCKETS: Record<string, { on: string[]; off: string[] }> = {
+  light: { on: ["on"], off: ["off"] },
+  cover: { on: ["open"], off: ["closed"] },
+  climate: { on: ["heat", "cool", "heat_cool", "auto", "dry", "fan_only"], off: ["off"] },
+  fan: { on: ["on"], off: ["off"] },
+  humidifier: { on: ["on"], off: ["off"] },
+  media_player: { on: ["playing", "paused", "on"], off: ["idle", "standby", "off"] },
+};
 
 const THEME_DEFINITIONS: ThemeDefinition[] = [
   {
@@ -140,20 +148,10 @@ function buildThemePopup(
   options: StrategyConfig,
   sonosEntities: string[],
 ): LovelaceCard {
-  const sections = groupThemeEntries(theme, grouping, hass);
-  const cards: LovelaceCard[] = [];
-
-  sections.forEach((section) => {
-    if (section.title) {
-      cards.push(bubbleSeparator(section.title, section.icon));
-    }
-    cards.push({
-      type: "grid",
-      square: false,
-      columns: theme.columns,
-      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities)),
-    });
-  });
+  const cards =
+    grouping === "state"
+      ? buildStateGroupedCards(theme)
+      : buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities);
 
   return {
     type: "custom:bubble-card",
@@ -171,6 +169,52 @@ function buildThemePopup(
   };
 }
 
+// Status grouping uses auto-entities so the On/Off groups update live and stay
+// sorted alphabetically as entities change state.
+function buildStateGroupedCards(theme: ActiveTheme): LovelaceCard[] {
+  return [
+    bubbleSeparator("On", "mdi:toggle-switch"),
+    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "on")),
+    bubbleSeparator("Off", "mdi:toggle-switch-off-outline"),
+    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "off")),
+  ];
+}
+
+function buildStateIncludes(domains: string[], bucket: "on" | "off"): AutoEntitiesFilter[] {
+  return domains.flatMap((domain) =>
+    (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map((state) => ({
+      domain,
+      state,
+      options: entityCardTemplate(domain),
+    })),
+  );
+}
+
+function buildStaticGroupedCards(
+  theme: ActiveTheme,
+  grouping: ThemeGrouping,
+  hass: HomeAssistant,
+  options: StrategyConfig,
+  sonosEntities: string[],
+): LovelaceCard[] {
+  const sections = groupThemeEntries(theme, grouping, hass);
+  const cards: LovelaceCard[] = [];
+
+  sections.forEach((section) => {
+    if (section.title) {
+      cards.push(bubbleSeparator(section.title, section.icon));
+    }
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: theme.columns,
+      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities)),
+    });
+  });
+
+  return cards;
+}
+
 type ThemeSection = {
   title: string | null;
   icon: string;
@@ -183,16 +227,6 @@ function groupThemeEntries(theme: ActiveTheme, grouping: ThemeGrouping, hass: Ho
       .map((entry) => entry.entity)
       .sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
     return [{ title: null, icon: "", entities }];
-  }
-
-  if (grouping === "state") {
-    const active = theme.entries.filter((entry) => isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
-    const inactive = theme.entries.filter((entry) => !isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
-
-    return [
-      { title: "On", icon: "mdi:toggle-switch", entities: active },
-      { title: "Off", icon: "mdi:toggle-switch-off-outline", entities: inactive },
-    ].filter((section) => section.entities.length > 0);
   }
 
   // Default: group by room/area, preserving the order areas appear in.
@@ -210,8 +244,4 @@ function groupThemeEntries(theme: ActiveTheme, grouping: ThemeGrouping, hass: Ho
   });
 
   return sections;
-}
-
-function isEntityActive(hass: HomeAssistant, entityId: string): boolean {
-  return ACTIVE_STATES.has(hass.states[entityId]?.state ?? "");
 }

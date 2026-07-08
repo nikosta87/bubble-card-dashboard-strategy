@@ -8,7 +8,7 @@ var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
-var DEFAULT_THEME_GROUPING = "area";
+var DEFAULT_THEME_GROUPING = "state";
 var DEFAULT_ROOM_ORDER = "alphabetical";
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
@@ -241,10 +241,13 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   _areas = [];
   _areasLoaded = false;
   _areasLoading = false;
+  _rendered = false;
   set hass(hass) {
     this._hass = hass;
     this.loadAreas();
-    this.render();
+    if (!this._rendered) {
+      this.render();
+    }
   }
   setConfig(config) {
     this._config = {
@@ -280,6 +283,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     return sortAreas(this._areas, this._config.room_order ?? DEFAULT_ROOM_ORDER, this._config.custom_room_order ?? []);
   }
   render() {
+    this._rendered = true;
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
@@ -703,6 +707,20 @@ function groupRoomEntities(entities) {
     entities: entities.filter((entity) => definition.domains.includes(getDomain(entity.entity_id)))
   }));
 }
+function entityCardTemplate(domain) {
+  if (domain === "media_player") {
+    return { type: "custom:bubble-card", card_type: "media-player" };
+  }
+  const cardType = DOMAIN_CARD_TYPES[domain] || "button";
+  if (cardType === "button") {
+    return {
+      type: "custom:bubble-card",
+      card_type: "button",
+      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch"
+    };
+  }
+  return { type: "custom:bubble-card", card_type: cardType };
+}
 function entityToCard(entity, options, sonosEntities = []) {
   const domain = getDomain(entity.entity_id);
   if (domain === "media_player") {
@@ -817,8 +835,35 @@ function navigationSubButton(name, icon, navigationPath) {
   };
 }
 
+// src/cards/auto-entities.ts
+function autoEntitiesGrid(columns, include) {
+  return {
+    type: "custom:auto-entities",
+    card: {
+      type: "grid",
+      square: false,
+      columns
+    },
+    card_param: "cards",
+    show_empty: false,
+    filter: {
+      include
+    },
+    sort: {
+      method: "friendly_name"
+    }
+  };
+}
+
 // src/views/theme-views.ts
-var ACTIVE_STATES = /* @__PURE__ */ new Set(["on", "open", "playing", "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "home", "cleaning"]);
+var DOMAIN_STATE_BUCKETS = {
+  light: { on: ["on"], off: ["off"] },
+  cover: { on: ["open"], off: ["closed"] },
+  climate: { on: ["heat", "cool", "heat_cool", "auto", "dry", "fan_only"], off: ["off"] },
+  fan: { on: ["on"], off: ["off"] },
+  humidifier: { on: ["on"], off: ["off"] },
+  media_player: { on: ["playing", "paused", "on"], off: ["idle", "standby", "off"] }
+};
 var THEME_DEFINITIONS = [
   {
     id: "lights",
@@ -890,19 +935,7 @@ function buildThemePopups(themes, hass, options, sonosEntities = []) {
   return themes.map((theme) => buildThemePopup(theme, grouping, hass, options, sonosEntities));
 }
 function buildThemePopup(theme, grouping, hass, options, sonosEntities) {
-  const sections = groupThemeEntries(theme, grouping, hass);
-  const cards = [];
-  sections.forEach((section) => {
-    if (section.title) {
-      cards.push(bubbleSeparator(section.title, section.icon));
-    }
-    cards.push({
-      type: "grid",
-      square: false,
-      columns: theme.columns,
-      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities))
-    });
-  });
+  const cards = grouping === "state" ? buildStateGroupedCards(theme) : buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities);
   return {
     type: "custom:bubble-card",
     card_type: "pop-up",
@@ -918,18 +951,43 @@ function buildThemePopup(theme, grouping, hass, options, sonosEntities) {
     cards
   };
 }
+function buildStateGroupedCards(theme) {
+  return [
+    bubbleSeparator("On", "mdi:toggle-switch"),
+    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "on")),
+    bubbleSeparator("Off", "mdi:toggle-switch-off-outline"),
+    autoEntitiesGrid(theme.columns, buildStateIncludes(theme.domains, "off"))
+  ];
+}
+function buildStateIncludes(domains, bucket) {
+  return domains.flatMap(
+    (domain) => (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map((state) => ({
+      domain,
+      state,
+      options: entityCardTemplate(domain)
+    }))
+  );
+}
+function buildStaticGroupedCards(theme, grouping, hass, options, sonosEntities) {
+  const sections = groupThemeEntries(theme, grouping, hass);
+  const cards = [];
+  sections.forEach((section) => {
+    if (section.title) {
+      cards.push(bubbleSeparator(section.title, section.icon));
+    }
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: theme.columns,
+      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities))
+    });
+  });
+  return cards;
+}
 function groupThemeEntries(theme, grouping, hass) {
   if (grouping === "none") {
     const entities = [...theme.entries].map((entry) => entry.entity).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
     return [{ title: null, icon: "", entities }];
-  }
-  if (grouping === "state") {
-    const active = theme.entries.filter((entry) => isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
-    const inactive = theme.entries.filter((entry) => !isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
-    return [
-      { title: "On", icon: "mdi:toggle-switch", entities: active },
-      { title: "Off", icon: "mdi:toggle-switch-off-outline", entities: inactive }
-    ].filter((section) => section.entities.length > 0);
   }
   const sections = [];
   const indexByArea = /* @__PURE__ */ new Map();
@@ -943,9 +1001,6 @@ function groupThemeEntries(theme, grouping, hass) {
     sections[index].entities.push(entry.entity);
   });
   return sections;
-}
-function isEntityActive(hass, entityId) {
-  return ACTIVE_STATES.has(hass.states[entityId]?.state ?? "");
 }
 
 // src/views/home-view.ts

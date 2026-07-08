@@ -10,7 +10,7 @@ export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_MEDIA_PLAYER_CARD: MediaPlayerCardType = "bubble-card";
 export const DEFAULT_SHOW_CAMERA_BUTTON = true;
 export const DEFAULT_ENABLE_SONOS_GROUPING = true;
-export const DEFAULT_THEME_GROUPING: ThemeGrouping = "area";
+export const DEFAULT_THEME_GROUPING: ThemeGrouping = "state";
 export const DEFAULT_ROOM_ORDER: RoomOrder = "alphabetical";
 export const ROOMS_POPUP_HASH = "#rooms";
 

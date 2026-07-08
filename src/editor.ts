@@ -18,11 +18,18 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
   private _areas: HassArea[] = [];
   private _areasLoaded = false;
   private _areasLoading = false;
+  private _rendered = false;
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
     this.loadAreas();
-    this.render();
+
+    // Only render on the first hass assignment. Home Assistant pushes a new hass
+    // object on every state change; re-rendering here would rebuild the form and
+    // close any open <select> dropdown the moment the user clicks it.
+    if (!this._rendered) {
+      this.render();
+    }
   }
 
   setConfig(config: StrategyConfig) {
@@ -66,6 +73,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
   }
 
   private render() {
+    this._rendered = true;
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;

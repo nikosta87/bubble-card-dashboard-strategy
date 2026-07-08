@@ -57,6 +57,30 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
   }));
 }
 
+/**
+ * A card template for a domain without a fixed entity. auto-entities injects the
+ * matched `entity` into this template, so it must not carry one itself.
+ */
+export function entityCardTemplate(domain: string): LovelaceCard {
+  // auto-entities injects `entity`, so media players always use the entity-based
+  // Bubble Card here (mini-media-player/YAMP use different entity keys).
+  if (domain === "media_player") {
+    return { type: "custom:bubble-card", card_type: "media-player" };
+  }
+
+  const cardType = DOMAIN_CARD_TYPES[domain] || "button";
+
+  if (cardType === "button") {
+    return {
+      type: "custom:bubble-card",
+      card_type: "button",
+      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+    };
+  }
+
+  return { type: "custom:bubble-card", card_type: cardType };
+}
+
 export function entityToCard(entity: HassEntity, options: StrategyConfig, sonosEntities: string[] = []): LovelaceCard {
   const domain = getDomain(entity.entity_id);
 
