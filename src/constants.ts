@@ -1,16 +1,17 @@
-import type { MediaPlayerCardType, ThemeGrouping } from "./types";
+import type { MediaPlayerCardType, RoomOrder, ThemeGrouping } from "./types";
 
 export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 export const VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 export const EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-export const VERSION = "0.15.0";
+export const VERSION = "0.16.0";
 
 export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_MEDIA_PLAYER_CARD: MediaPlayerCardType = "bubble-card";
 export const DEFAULT_SHOW_CAMERA_BUTTON = true;
 export const DEFAULT_ENABLE_SONOS_GROUPING = true;
 export const DEFAULT_THEME_GROUPING: ThemeGrouping = "area";
+export const DEFAULT_ROOM_ORDER: RoomOrder = "alphabetical";
 export const ROOMS_POPUP_HASH = "#rooms";
 
 export const DOMAIN_CARD_TYPES: Record<string, string> = {

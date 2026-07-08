@@ -50,6 +50,8 @@ export type MediaPlayerCardType = "bubble-card" | "mini-media-player" | "yamp";
 
 export type ThemeGrouping = "area" | "state" | "none";
 
+export type RoomOrder = "home_assistant" | "alphabetical" | "custom";
+
 export type StrategyConfig = {
   title?: string;
   profile_image?: string;
@@ -61,6 +63,9 @@ export type StrategyConfig = {
   enable_sonos_grouping?: boolean;
   sonos_entities?: string[];
   theme_grouping?: ThemeGrouping;
+  room_order?: RoomOrder;
+  hidden_areas?: string[];
+  custom_room_order?: string[];
 };
 
 export type LovelaceCard = Record<string, unknown>;

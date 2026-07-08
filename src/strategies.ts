@@ -7,7 +7,7 @@ import type {
   HomeAssistant,
   StrategyConfig,
 } from "./types";
-import { entityBelongsToArea, getSonosMediaPlayers } from "./utils/entities";
+import { getActiveAreas, getSonosMediaPlayers, orderAreas } from "./utils/entities";
 import { buildAreaView } from "./views/area-view";
 import { buildHomeView } from "./views/home-view";
 
@@ -22,9 +22,7 @@ export class BubbleDashboardStrategy extends HTMLElement {
   static async generate(config: StrategyConfig, hass: HomeAssistant) {
     const { areas, devices, entities } = await getRegistries(hass);
 
-    const activeAreas = areas
-      .filter((area) => entities.some((entity) => entityBelongsToArea(entity, area.area_id, devices)))
-      .sort((left, right) => left.name.localeCompare(right.name));
+    const activeAreas = orderAreas(getActiveAreas(areas, entities, devices), config);
 
     return {
       title: config.title || hass.config.location_name || "Bubble Card Dashboard",

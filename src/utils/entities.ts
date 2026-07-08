@@ -1,5 +1,6 @@
 import {
   DEFAULT_IGNORED_DOMAINS,
+  DEFAULT_ROOM_ORDER,
   DOMAIN_CARD_TYPES,
 } from "../constants";
 import type {
@@ -8,12 +9,44 @@ import type {
   HassEntity,
   HassStateObject,
   HomeAssistant,
+  RoomOrder,
   StrategyConfig,
 } from "../types";
 import { slugify } from "./format";
 
 export function getDomain(entityId: string): string {
   return entityId.split(".", 1)[0] || "";
+}
+
+/** Areas that have at least one entity assigned (directly or via a device). */
+export function getActiveAreas(areas: HassArea[], entities: HassEntity[], devices: HassDevice[]): HassArea[] {
+  return areas.filter((area) => entities.some((entity) => entityBelongsToArea(entity, area.area_id, devices)));
+}
+
+/** Sorts areas by the chosen order without applying any visibility filter. */
+export function sortAreas(areas: HassArea[], order: RoomOrder, customOrder: string[]): HassArea[] {
+  if (order === "alphabetical") {
+    return [...areas].sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  if (order === "custom") {
+    const rank = (areaId: string) => {
+      const index = customOrder.indexOf(areaId);
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    return [...areas].sort((left, right) => rank(left.area_id) - rank(right.area_id) || left.name.localeCompare(right.name));
+  }
+
+  // "home_assistant": keep the order the area registry returned.
+  return [...areas];
+}
+
+/** Applies the configured visibility filter and ordering to a list of areas. */
+export function orderAreas(areas: HassArea[], options: StrategyConfig): HassArea[] {
+  const hidden = new Set(options.hidden_areas ?? []);
+  const visible = areas.filter((area) => !hidden.has(area.area_id));
+
+  return sortAreas(visible, options.room_order ?? DEFAULT_ROOM_ORDER, options.custom_room_order ?? []);
 }
 
 export function entityBelongsToArea(entity: HassEntity, areaId: string, devices: HassDevice[]): boolean {
