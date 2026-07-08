@@ -48,6 +48,8 @@ export type HomeAssistant = {
 
 export type MediaPlayerCardType = "bubble-card" | "mini-media-player" | "yamp";
 
+export type ThemeGrouping = "area" | "state" | "none";
+
 export type StrategyConfig = {
   title?: string;
   profile_image?: string;
@@ -58,6 +60,7 @@ export type StrategyConfig = {
   show_camera_button?: boolean;
   enable_sonos_grouping?: boolean;
   sonos_entities?: string[];
+  theme_grouping?: ThemeGrouping;
 };
 
 export type LovelaceCard = Record<string, unknown>;

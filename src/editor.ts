@@ -3,8 +3,9 @@ import {
   DEFAULT_MAX_ENTITIES_PER_AREA,
   DEFAULT_MEDIA_PLAYER_CARD,
   DEFAULT_SHOW_CAMERA_BUTTON,
+  DEFAULT_THEME_GROUPING,
 } from "./constants";
-import type { HomeAssistant, MediaPlayerCardType, StrategyConfig } from "./types";
+import type { HomeAssistant, MediaPlayerCardType, StrategyConfig, ThemeGrouping } from "./types";
 import { getMediaPlayerCardType } from "./cards/media-player";
 import { clampNumber, escapeHtml } from "./utils/format";
 
@@ -23,6 +24,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
+      theme_grouping: DEFAULT_THEME_GROUPING,
       ...config,
     };
     this.render();
@@ -37,6 +39,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
+    const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
 
     this.innerHTML = `
       <style>
@@ -147,6 +150,19 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           <div class="hint">Limits how many generated entity cards are shown inside each room pop-up.</div>
         </div>
       </div>
+
+      <div class="section">
+        <div class="section-title">Theme views</div>
+        <div class="field">
+          <label for="theme_grouping">Group entities by</label>
+          <select id="theme_grouping" data-field="theme_grouping">
+            ${themeGroupingOption("area", "Room", themeGrouping)}
+            ${themeGroupingOption("state", "On / off status", themeGrouping)}
+            ${themeGroupingOption("none", "No grouping", themeGrouping)}
+          </select>
+          <div class="hint">Controls how the Lights, Covers, Climate and Media theme views are grouped.</div>
+        </div>
+      </div>
     `;
 
     this.querySelectorAll("[data-field]").forEach((element) => {
@@ -208,5 +224,9 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
 }
 
 function mediaPlayerCardOption(value: MediaPlayerCardType, label: string, selectedValue: MediaPlayerCardType): string {
+  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+}
+
+function themeGroupingOption(value: ThemeGrouping, label: string, selectedValue: ThemeGrouping): string {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }

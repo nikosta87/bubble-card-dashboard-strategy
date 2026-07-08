@@ -3,11 +3,12 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.14.0";
+var VERSION = "0.15.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
+var DEFAULT_THEME_GROUPING = "area";
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
   alarm_control_panel: "button",
@@ -123,6 +124,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
+      theme_grouping: DEFAULT_THEME_GROUPING,
       ...config
     };
     this.render();
@@ -135,6 +137,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
+    const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
     this.innerHTML = `
       <style>
         :host {
@@ -244,6 +247,19 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <div class="hint">Limits how many generated entity cards are shown inside each room pop-up.</div>
         </div>
       </div>
+
+      <div class="section">
+        <div class="section-title">Theme views</div>
+        <div class="field">
+          <label for="theme_grouping">Group entities by</label>
+          <select id="theme_grouping" data-field="theme_grouping">
+            ${themeGroupingOption("area", "Room", themeGrouping)}
+            ${themeGroupingOption("state", "On / off status", themeGrouping)}
+            ${themeGroupingOption("none", "No grouping", themeGrouping)}
+          </select>
+          <div class="hint">Controls how the Lights, Covers, Climate and Media theme views are grouped.</div>
+        </div>
+      </div>
     `;
     this.querySelectorAll("[data-field]").forEach((element) => {
       element.addEventListener("change", (event) => this.handleChange(event));
@@ -293,6 +309,9 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   }
 };
 function mediaPlayerCardOption(value, label, selectedValue) {
+  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+}
+function themeGroupingOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
@@ -379,52 +398,6 @@ function findStateEntities(hass, domains) {
 }
 function findFirstStateEntity(hass, domains) {
   return findStateEntities(hass, domains)[0];
-}
-function findLastUsedMediaPlayer(hass) {
-  const mediaPlayers = findStateEntities(hass, ["media_player"]);
-  return mediaPlayers.map((entityId) => ({
-    entityId,
-    score: getMediaPlayerScore(hass, entityId)
-  })).sort((left, right) => right.score - left.score || left.entityId.localeCompare(right.entityId))[0]?.entityId;
-}
-function getMediaPlayerScore(hass, entityId) {
-  const state = hass.states[entityId];
-  if (!state) {
-    return 0;
-  }
-  const stateRank = {
-    playing: 4,
-    paused: 3,
-    idle: 2,
-    standby: 1,
-    on: 1
-  };
-  const mediaMetadataBonus = hasMediaMetadata(state.attributes) ? 1e13 : 0;
-  const stateBonus = (stateRank[state.state] || 0) * 1e14;
-  const updatedAt = getMediaPlayerUpdatedAt(state);
-  return stateBonus + mediaMetadataBonus + updatedAt;
-}
-function hasMediaMetadata(attributes) {
-  return Boolean(
-    attributes.media_title || attributes.media_artist || attributes.media_album_name || attributes.entity_picture || attributes.app_name
-  );
-}
-function getMediaPlayerUpdatedAt(state) {
-  const candidates = [
-    state.attributes.media_position_updated_at,
-    state.last_updated,
-    state.last_changed
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate !== "string") {
-      continue;
-    }
-    const timestamp = Date.parse(candidate);
-    if (!Number.isNaN(timestamp)) {
-      return timestamp;
-    }
-  }
-  return 0;
 }
 function getSonosMediaPlayers(entities, options) {
   return [
@@ -606,13 +579,7 @@ function buildTopNavigation(hass, options) {
   return {
     type: "horizontal-stack",
     cards: [
-      subButtonBar(
-        [
-          profileSubButton(hass, options),
-          navigationSubButton("Home", "mdi:home", ROOMS_POPUP_HASH)
-        ],
-        "flex-start"
-      ),
+      subButtonBar([profileSubButton(hass, options)], "flex-start"),
       subButtonBar(
         [
           ...showCameraButton ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []
@@ -669,6 +636,7 @@ function navigationSubButton(name, icon, navigationPath) {
 }
 
 // src/views/theme-views.ts
+var ACTIVE_STATES = /* @__PURE__ */ new Set(["on", "open", "playing", "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "home", "cleaning"]);
 var THEME_DEFINITIONS = [
   {
     id: "lights",
@@ -701,14 +669,12 @@ var THEME_DEFINITIONS = [
 ];
 function getActiveThemes(areas, entities, devices, hass, options) {
   return THEME_DEFINITIONS.map((theme) => {
-    const themeAreas = areas.map((area) => ({
-      area,
-      entities: getAreaEntities(area.area_id, entities, devices, hass, options).filter(
-        (entity) => theme.domains.includes(getDomain(entity.entity_id))
-      )
-    })).filter((group) => group.entities.length > 0);
-    return { ...theme, areas: themeAreas };
-  }).filter((theme) => theme.areas.length > 0);
+    const entries = [];
+    areas.forEach((area) => {
+      getAreaEntities(area.area_id, entities, devices, hass, options).filter((entity) => theme.domains.includes(getDomain(entity.entity_id))).forEach((entity) => entries.push({ area, entity }));
+    });
+    return { ...theme, entries };
+  }).filter((theme) => theme.entries.length > 0);
 }
 function buildThemeNavigation(themes) {
   return {
@@ -737,18 +703,22 @@ function buildThemeNavigation(themes) {
     }
   };
 }
-function buildThemePopups(themes, options, sonosEntities = []) {
-  return themes.map((theme) => buildThemePopup(theme, options, sonosEntities));
+function buildThemePopups(themes, hass, options, sonosEntities = []) {
+  const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
+  return themes.map((theme) => buildThemePopup(theme, grouping, hass, options, sonosEntities));
 }
-function buildThemePopup(theme, options, sonosEntities) {
+function buildThemePopup(theme, grouping, hass, options, sonosEntities) {
+  const sections = groupThemeEntries(theme, grouping, hass);
   const cards = [];
-  theme.areas.forEach((group) => {
-    cards.push(bubbleSeparator(group.area.name, group.area.icon || "mdi:home-outline"));
+  sections.forEach((section) => {
+    if (section.title) {
+      cards.push(bubbleSeparator(section.title, section.icon));
+    }
     cards.push({
       type: "grid",
       square: false,
       columns: theme.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options, sonosEntities))
+      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities))
     });
   });
   return {
@@ -766,10 +736,40 @@ function buildThemePopup(theme, options, sonosEntities) {
     cards
   };
 }
+function groupThemeEntries(theme, grouping, hass) {
+  if (grouping === "none") {
+    const entities = [...theme.entries].map((entry) => entry.entity).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
+    return [{ title: null, icon: "", entities }];
+  }
+  if (grouping === "state") {
+    const active = theme.entries.filter((entry) => isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
+    const inactive = theme.entries.filter((entry) => !isEntityActive(hass, entry.entity.entity_id)).map((entry) => entry.entity);
+    return [
+      { title: "On", icon: "mdi:toggle-switch", entities: active },
+      { title: "Off", icon: "mdi:toggle-switch-off-outline", entities: inactive }
+    ].filter((section) => section.entities.length > 0);
+  }
+  const sections = [];
+  const indexByArea = /* @__PURE__ */ new Map();
+  theme.entries.forEach((entry) => {
+    let index = indexByArea.get(entry.area.area_id);
+    if (index === void 0) {
+      index = sections.length;
+      indexByArea.set(entry.area.area_id, index);
+      sections.push({ title: entry.area.name, icon: entry.area.icon || "mdi:home-outline", entities: [] });
+    }
+    sections[index].entities.push(entry.entity);
+  });
+  return sections;
+}
+function isEntityActive(hass, entityId) {
+  return ACTIVE_STATES.has(hass.states[entityId]?.state ?? "");
+}
 
 // src/views/home-view.ts
 function buildHomeView(areas, entities, devices, hass, options, sonosEntities = []) {
   const activeThemes = getActiveThemes(areas, entities, devices, hass, options);
+  const overviewCards = buildOverviewCards(hass);
   return {
     type: "sections",
     max_columns: 2,
@@ -778,25 +778,25 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
         type: "grid",
         cards: [
           buildTopNavigation(hass, options),
-          {
-            type: "grid",
-            square: false,
-            columns: 2,
-            cards: buildOverviewCards(entities, hass, options, sonosEntities)
-          },
+          ...overviewCards.length ? [
+            {
+              type: "grid",
+              square: false,
+              columns: 2,
+              cards: overviewCards
+            }
+          ] : [],
           ...activeThemes.length ? [buildThemeNavigation(activeThemes)] : [],
-          buildRoomsPopup(areas, entities, devices),
+          ...buildRoomsSection(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
-          ...buildThemePopups(activeThemes, options, sonosEntities)
+          ...buildThemePopups(activeThemes, hass, options, sonosEntities)
         ]
       }
     ]
   };
 }
-function buildOverviewCards(entities, hass, options, sonosEntities) {
+function buildOverviewCards(hass) {
   const weather = findFirstStateEntity(hass, ["weather"]);
-  const mediaPlayer = findLastUsedMediaPlayer(hass);
-  const climate = findFirstStateEntity(hass, ["climate"]);
   const vacuums = findStateEntities(hass, ["vacuum"]).slice(0, 2);
   return [
     ...weather ? [
@@ -804,16 +804,6 @@ function buildOverviewCards(entities, hass, options, sonosEntities) {
         type: "weather-forecast",
         entity: weather,
         forecast_type: "daily"
-      })
-    ] : [],
-    ...mediaPlayer ? [
-      fixedHomeCard(mediaPlayerToCard(mediaPlayer, options, sonosEntities))
-    ] : [],
-    ...climate ? [
-      fixedHomeCard({
-        type: "custom:bubble-card",
-        card_type: "climate",
-        entity: climate
       })
     ] : [],
     ...vacuums.map(
@@ -839,35 +829,24 @@ function buildOverviewCards(entities, hass, options, sonosEntities) {
     )
   ];
 }
-function buildRoomsPopup(areas, entities, devices) {
-  return {
-    type: "custom:bubble-card",
-    card_type: "pop-up",
-    hash: ROOMS_POPUP_HASH,
-    name: "Choose a room",
-    icon: "mdi:home",
-    popup_mode: "centered",
-    width_desktop: "680px",
-    bg_opacity: "85",
-    bg_blur: "12",
-    close_by_clicking_outside: true,
-    cards: [
-      {
-        type: "grid",
-        square: false,
-        columns: 2,
-        cards: areas.map((area) => {
-          const primaryEntity = findPrimaryEntityForArea(area.area_id, entities, devices);
-          return buttonToHash(
-            area.name,
-            area.icon || "mdi:home-outline",
-            getRoomHash(area),
-            primaryEntity?.entity_id
-          );
-        })
-      }
-    ]
-  };
+function buildRoomsSection(areas, entities, devices) {
+  return [
+    bubbleSeparator("Rooms", "mdi:floor-plan"),
+    {
+      type: "grid",
+      square: false,
+      columns: 2,
+      cards: areas.map((area) => {
+        const primaryEntity = findPrimaryEntityForArea(area.area_id, entities, devices);
+        return buttonToHash(
+          area.name,
+          area.icon || "mdi:home-outline",
+          getRoomHash(area),
+          primaryEntity?.entity_id
+        );
+      })
+    }
+  ];
 }
 function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = []) {
   const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(
@@ -875,7 +854,7 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
     options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA
   );
   const groups = groupRoomEntities(areaEntities);
-  const cards = [buttonToHash("Back to rooms", "mdi:arrow-left", ROOMS_POPUP_HASH)];
+  const cards = [];
   groups.forEach((group) => {
     if (!group.entities.length) {
       return;
@@ -888,7 +867,7 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
       cards: group.entities.map((entity) => entityToCard(entity, options, sonosEntities))
     });
   });
-  if (cards.length === 1) {
+  if (!cards.length) {
     cards.push({
       type: "markdown",
       content: "No visible entities found for this area."
