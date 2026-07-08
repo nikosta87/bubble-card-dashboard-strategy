@@ -22,6 +22,7 @@ import {
   getAreaEntities,
   getRoomHash,
 } from "../utils/entities";
+import { buildThemeNavigation, buildThemePopups, getActiveThemes } from "./theme-views";
 
 export function buildHomeView(
   areas: HassArea[],
@@ -31,6 +32,8 @@ export function buildHomeView(
   options: StrategyConfig,
   sonosEntities: string[] = [],
 ) {
+  const activeThemes = getActiveThemes(areas, entities, devices, hass, options);
+
   return {
     type: "sections",
     max_columns: 2,
@@ -45,8 +48,10 @@ export function buildHomeView(
             columns: 2,
             cards: buildOverviewCards(entities, hass, options, sonosEntities),
           },
+          ...(activeThemes.length ? [buildThemeNavigation(activeThemes)] : []),
           buildRoomsPopup(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
+          ...buildThemePopups(activeThemes, options, sonosEntities),
         ],
       },
     ],
