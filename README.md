@@ -19,6 +19,7 @@ This project is built for people who want a clean Bubble Card dashboard without 
 
 - Home Assistant with dashboard strategy support
 - [Bubble Card](https://github.com/Clooos/Bubble-Card) installed
+- [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) installed for the status-grouped summaries (Lights, Security, Batteries)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod) installed if you want all Home overview cards to use the same fixed height
 - Areas configured in Home Assistant
 - Devices and entities assigned to areas

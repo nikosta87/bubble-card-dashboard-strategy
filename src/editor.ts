@@ -1,9 +1,12 @@
 import {
+  DEFAULT_BATTERY_CRITICAL_BELOW,
   DEFAULT_ENABLE_SONOS_GROUPING,
+  DEFAULT_HIDE_MOBILE_APP_BATTERIES,
   DEFAULT_MAX_ENTITIES_PER_AREA,
   DEFAULT_MEDIA_PLAYER_CARD,
   DEFAULT_ROOM_ORDER,
   DEFAULT_SHOW_CAMERA_BUTTON,
+  DEFAULT_SUMMARY_COLUMNS,
   DEFAULT_THEME_GROUPING,
 } from "./constants";
 import type { HassArea, HomeAssistant, MediaPlayerCardType, RoomOrder, StrategyConfig, ThemeGrouping } from "./types";
@@ -12,17 +15,34 @@ import { getRegistries } from "./registry";
 import { getActiveAreas, sortAreas } from "./utils/entities";
 import { clampNumber, escapeHtml } from "./utils/format";
 
+const BOOLEAN_FIELDS = new Set([
+  "show_camera_button",
+  "enable_sonos_grouping",
+  "show_light_summary",
+  "show_security_summary",
+  "show_climate_summary",
+  "show_battery_summary",
+  "hide_mobile_app_batteries",
+]);
+
 export class BubbleCardDashboardStrategyEditor extends HTMLElement {
   private _config: StrategyConfig = {};
   private _hass?: HomeAssistant;
   private _areas: HassArea[] = [];
   private _areasLoaded = false;
   private _areasLoading = false;
+  private _rendered = false;
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
     this.loadAreas();
-    this.render();
+
+    // Only render on the first hass assignment. Home Assistant pushes a new hass
+    // object on every state change; re-rendering here would rebuild the form and
+    // close any open <select> dropdown the moment the user clicks it.
+    if (!this._rendered) {
+      this.render();
+    }
   }
 
   setConfig(config: StrategyConfig) {
@@ -66,12 +86,20 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
   }
 
   private render() {
+    this._rendered = true;
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
+    const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
+    const showLightSummary = this._config.show_light_summary ?? true;
+    const showSecuritySummary = this._config.show_security_summary ?? true;
+    const showClimateSummary = this._config.show_climate_summary ?? true;
+    const showBatterySummary = this._config.show_battery_summary ?? true;
+    const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
+    const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
 
     this.innerHTML = `
       <style>
@@ -111,6 +139,24 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           color: var(--primary-text-color);
           font: inherit;
           padding: 10px 12px;
+        }
+
+        input[type="checkbox"],
+        input[type="radio"] {
+          width: auto;
+        }
+
+        .radio-group {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .radio-group label {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          font-weight: 400;
         }
 
         .hint {
@@ -249,6 +295,45 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       </div>
 
       <div class="section">
+        <div class="section-title">Summaries</div>
+        <div class="field">
+          <label>Summary layout</label>
+          <div class="radio-group">
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
+          </div>
+          <div class="hint">Choose how the summary buttons are arranged. The layout adjusts automatically when summaries are hidden.</div>
+        </div>
+        <div class="field">
+          <label for="show_light_summary">Light summary</label>
+          <input id="show_light_summary" data-field="show_light_summary" type="checkbox" ${showLightSummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="show_security_summary">Security summary</label>
+          <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
+          <div class="hint">Shows motion, door/window, smoke and gas sensors plus locks and alarm panels, grouped into active and clear.</div>
+        </div>
+        <div class="field">
+          <label for="show_climate_summary">Climate summary</label>
+          <input id="show_climate_summary" data-field="show_climate_summary" type="checkbox" ${showClimateSummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="show_battery_summary">Battery summary</label>
+          <input id="show_battery_summary" data-field="show_battery_summary" type="checkbox" ${showBatterySummary ? "checked" : ""}>
+        </div>
+        <div class="field">
+          <label for="hide_mobile_app_batteries">Hide mobile app batteries</label>
+          <input id="hide_mobile_app_batteries" data-field="hide_mobile_app_batteries" type="checkbox" ${hideMobileBatteries ? "checked" : ""}>
+          <div class="hint">Hides phone, tablet and watch batteries (Mobile App) from the battery summary.</div>
+        </div>
+        <div class="field">
+          <label for="battery_critical_below">Battery critical below</label>
+          <input id="battery_critical_below" data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">
+          <div class="hint">Batteries below this percentage appear in the Critical group.</div>
+        </div>
+      </div>
+
+      <div class="section">
         <div class="section-title">Theme views</div>
         <div class="field">
           <label for="theme_grouping">Group entities by</label>
@@ -332,7 +417,17 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       return;
     }
 
-    if (field === "show_camera_button" || field === "enable_sonos_grouping") {
+    if (field === "battery_critical_below") {
+      this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
+      return;
+    }
+
+    if (field === "summary_columns") {
+      this.updateConfig(field, Number(target.value));
+      return;
+    }
+
+    if (BOOLEAN_FIELDS.has(field)) {
       this.updateConfig(field, (target as HTMLInputElement).checked);
       return;
     }
