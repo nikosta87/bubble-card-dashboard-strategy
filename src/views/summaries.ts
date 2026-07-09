@@ -1,7 +1,6 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
-  DEFAULT_THEME_GROUPING,
 } from "../constants";
 import type {
   HassArea,
@@ -15,7 +14,7 @@ import type {
 import { autoEntitiesGrid, type AutoEntitiesFilter } from "../cards/auto-entities";
 import { bubblePopup, bubbleSeparator } from "../cards/common";
 import { entityCardTemplate, entityToCard } from "../cards/entity-cards";
-import { bubbleThemeStyles, summaryTileLayout } from "../design";
+import { summaryTileLayout, tileStyles } from "../design";
 import { getAreaEntities, getDomain, getFriendlyName } from "../utils/entities";
 
 // Summaries group the whole home by function ("all lights", "security", ...)
@@ -30,6 +29,9 @@ type DomainSummary = {
   configKey: SummaryConfigKey;
   domains: string[];
   columns: number;
+  // Default grouping when the user hasn't chosen one explicitly. Lights read
+  // best by on/off status, climate reads best by room.
+  defaultGrouping: ThemeGrouping;
 };
 
 type SpecialSummary = {
@@ -94,6 +96,7 @@ const SUMMARIES: SummaryDefinition[] = [
     configKey: "show_light_summary",
     domains: ["light"],
     columns: 2,
+    defaultGrouping: "state",
   },
   {
     kind: "security",
@@ -110,6 +113,7 @@ const SUMMARIES: SummaryDefinition[] = [
     configKey: "show_climate_summary",
     domains: ["climate", "fan", "humidifier"],
     columns: 2,
+    defaultGrouping: "area",
   },
   {
     kind: "battery",
@@ -205,7 +209,7 @@ export function buildSummaryNavigation(
 }
 
 function buildSummaryTile(summary: ResolvedSummary, columns: number, options: StrategyConfig): LovelaceCard {
-  const counter = summaryCounter(summary, options);
+  const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
 
   return {
     type: "custom:bubble-card",
@@ -214,57 +218,58 @@ function buildSummaryTile(summary: ResolvedSummary, columns: number, options: St
     name: summary.title,
     icon: summary.icon,
     card_layout: summaryTileLayout(columns),
-    styles: bubbleThemeStyles(),
+    // The counter value is written into the sub-button from the styles template
+    // (Bubble Card only evaluates templates there), so the sub-button just needs
+    // a placeholder that gets overwritten live.
+    styles: tileStyles(counter?.expression),
     button_action: {
       tap_action: {
         action: "navigate",
         navigation_path: `#${summary.id}`,
       },
     },
-    ...(counter ? { sub_button: [counter] } : {}),
-  };
-}
-
-// A single live-count chip per tile, only where a count is meaningful, so the
-// tiles stay informative without being overloaded.
-function summaryCounter(summary: ResolvedSummary, options: StrategyConfig): LovelaceCard | undefined {
-  const counter = COUNTER_TEMPLATES[summary.id]?.(options);
-
-  if (!counter) {
-    return undefined;
-  }
-
-  return {
-    name: counter.template,
-    icon: counter.icon,
-    show_name: true,
-    show_icon: true,
-    show_background: true,
-    tap_action: { action: "none" },
+    ...(counter
+      ? {
+          sub_button: [
+            {
+              name: "0",
+              icon: counter.icon,
+              show_name: true,
+              show_icon: true,
+              show_background: true,
+              tap_action: { action: "none" },
+            },
+          ],
+        }
+      : {}),
   };
 }
 
 const SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
 
-const COUNTER_TEMPLATES: Record<string, (options: StrategyConfig) => { icon: string; template: string }> = {
+// A single live-count expression per tile, only where a count is meaningful, so
+// the tiles stay informative without being overloaded. Each returns a raw JS
+// expression evaluated inside the Bubble Card styles template (where `hass` is
+// available).
+const COUNTER_EXPRESSIONS: Record<string, (options: StrategyConfig) => { icon: string; expression: string }> = {
   lights: () => ({
     icon: "mdi:lightbulb",
-    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length}",
+    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length",
   }),
   climate: () => ({
     icon: "mdi:fire",
-    template:
-      "${Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length}",
+    expression:
+      "Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length",
   }),
   security: () => ({
     icon: "mdi:shield-alert",
-    template: `\${Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length}`,
+    expression: `Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length`,
   }),
   batteries: (options) => {
     const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
     return {
       icon: "mdi:battery-alert",
-      template: `\${Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length}`,
+      expression: `Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length`,
     };
   },
 };
@@ -305,7 +310,9 @@ function buildSummaryCards(
     return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
   }
 
-  const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
+  // The global theme_grouping option, when set, overrides the per-summary
+  // default (lights: status, climate: room).
+  const grouping = options.theme_grouping ?? summary.defaultGrouping;
   return grouping === "state"
     ? buildStateGroupedCards(summary)
     : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);

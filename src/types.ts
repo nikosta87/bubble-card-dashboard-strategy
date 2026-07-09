@@ -52,7 +52,7 @@ export type ThemeGrouping = "area" | "state" | "none";
 
 export type RoomOrder = "home_assistant" | "alphabetical" | "custom";
 
-export type SummaryColumns = 2 | 4;
+export type SummaryColumns = 1 | 2 | 4;
 
 export type StrategyConfig = {
   title?: string;

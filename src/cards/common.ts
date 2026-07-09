@@ -39,7 +39,10 @@ export function bubblePopup(config: {
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
-    show_previous_button: config.showPreviousButton ?? true,
+    // The back arrow only makes sense when a previous pop-up was open. Our
+    // pop-ups open directly from the home view, so it would just duplicate the
+    // close button — off unless a caller explicitly opts in.
+    show_previous_button: config.showPreviousButton ?? false,
     close_by_clicking_outside: true,
     styles: bubbleThemeStyles(),
     cards: config.cards,

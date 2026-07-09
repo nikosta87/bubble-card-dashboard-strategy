@@ -1,6 +1,6 @@
 {
   "name": "bubble-card-dashboard-strategy",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "A Home Assistant dashboard strategy that generates Bubble Card based dashboards.",
   "type": "module",
   "private": false,

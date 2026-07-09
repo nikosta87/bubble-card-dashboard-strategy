@@ -13,6 +13,7 @@ export const DESIGN = {
   // card_layout per summary-tile column count: wider layouts get more presence,
   // denser layouts stay compact so they never grow too large.
   summaryTileLayout: {
+    1: "large",
     2: "large",
     4: "normal",
   } as Record<number, string>,
@@ -48,4 +49,24 @@ export function bubbleThemeStyles(): string {
 /** card_layout for a summary tile given the configured column count. */
 export function summaryTileLayout(columns: number): string {
   return DESIGN.summaryTileLayout[columns] ?? "normal";
+}
+
+const COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
+
+/**
+ * Bubble Card only evaluates `${...}` templates inside the `styles` block, so the
+ * live counter is written into the tile's first sub-button from there. Combines
+ * the shared theme styles with the counter template (which must come last, as
+ * Bubble Card requires non-CSS templates at the end). Falls back to theme-only
+ * styles when a tile has no counter.
+ */
+export function tileStyles(counterExpression?: string): string {
+  const base = bubbleThemeStyles();
+
+  if (!counterExpression) {
+    return base;
+  }
+
+  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
+  return `${base}\n${write}`;
 }
