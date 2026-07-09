@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.17.0";
+var VERSION = "0.18.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
@@ -687,20 +687,73 @@ function roomOrderOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
+// src/design.ts
+var DESIGN = {
+  popup: {
+    widthDesktop: "540px",
+    bgOpacity: "92",
+    bgBlur: "14"
+  },
+  homeCard: {
+    height: "190px"
+  },
+  // card_layout per summary-tile column count: wider layouts get more presence,
+  // denser layouts stay compact so they never grow too large.
+  summaryTileLayout: {
+    2: "large",
+    4: "normal"
+  }
+};
+var THEME_TOKENS = {
+  "--bcds-accent": "var(--primary-color)",
+  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
+};
+var BUBBLE_BINDINGS = {
+  "--bubble-accent-color": "var(--bcds-accent)",
+  "--bubble-border-radius": "var(--bcds-radius)"
+};
+function bubbleThemeStyles() {
+  const declarations = [...Object.entries(THEME_TOKENS), ...Object.entries(BUBBLE_BINDINGS)].map(([name, value]) => `  ${name}: ${value};`).join("\n");
+  return `ha-card {
+${declarations}
+}`;
+}
+function summaryTileLayout(columns) {
+  return DESIGN.summaryTileLayout[columns] ?? "normal";
+}
+
 // src/cards/common.ts
 function fixedHomeCard(card) {
+  const height = DESIGN.homeCard.height;
   return {
     ...card,
     card_mod: {
       style: `
         ha-card {
-          height: 190px;
-          min-height: 190px;
-          max-height: 190px;
+          height: ${height};
+          min-height: ${height};
+          max-height: ${height};
           overflow: hidden;
         }
       `
     }
+  };
+}
+function bubblePopup(config) {
+  return {
+    type: "custom:bubble-card",
+    card_type: "pop-up",
+    hash: config.hash,
+    name: config.name,
+    icon: config.icon,
+    popup_mode: "centered",
+    width_desktop: DESIGN.popup.widthDesktop,
+    bg_opacity: DESIGN.popup.bgOpacity,
+    bg_blur: DESIGN.popup.bgBlur,
+    show_previous_button: config.showPreviousButton ?? true,
+    close_by_clicking_outside: true,
+    styles: bubbleThemeStyles(),
+    cards: config.cards
   };
 }
 function bubbleSeparator(name, icon) {
@@ -1034,37 +1087,84 @@ function isSecurityState(state) {
 function isBatteryState(state) {
   return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
 }
-function buildSummaryNavigation(summaries, columns) {
+function buildSummaryNavigation(summaries, columns, options) {
   return {
     type: "grid",
     square: false,
     columns,
-    cards: summaries.map((summary) => buttonToHash(summary.title, summary.icon, `#${summary.id}`))
+    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options))
   };
 }
+function buildSummaryTile(summary, columns, options) {
+  const counter = summaryCounter(summary, options);
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "name",
+    name: summary.title,
+    icon: summary.icon,
+    card_layout: summaryTileLayout(columns),
+    styles: bubbleThemeStyles(),
+    button_action: {
+      tap_action: {
+        action: "navigate",
+        navigation_path: `#${summary.id}`
+      }
+    },
+    ...counter ? { sub_button: [counter] } : {}
+  };
+}
+function summaryCounter(summary, options) {
+  const counter = COUNTER_TEMPLATES[summary.id]?.(options);
+  if (!counter) {
+    return void 0;
+  }
+  return {
+    name: counter.template,
+    icon: counter.icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: { action: "none" }
+  };
+}
+var SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
+var COUNTER_TEMPLATES = {
+  lights: () => ({
+    icon: "mdi:lightbulb",
+    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length}"
+  }),
+  climate: () => ({
+    icon: "mdi:fire",
+    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length}"
+  }),
+  security: () => ({
+    icon: "mdi:shield-alert",
+    template: `\${Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length}`
+  }),
+  batteries: (options) => {
+    const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    return {
+      icon: "mdi:battery-alert",
+      template: `\${Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length}`
+    };
+  }
+};
 function buildSummaryPopups(summaries, hass, options, sonosEntities = []) {
   return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities));
 }
 function buildSummaryPopup(summary, hass, options, sonosEntities) {
   const cards = buildSummaryCards(summary, hass, options, sonosEntities);
-  return {
-    type: "custom:bubble-card",
-    card_type: "pop-up",
+  return bubblePopup({
     hash: `#${summary.id}`,
     name: summary.title,
     icon: summary.icon,
-    popup_mode: "centered",
-    width_desktop: "680px",
-    bg_opacity: "85",
-    bg_blur: "12",
-    show_previous_button: true,
-    close_by_clicking_outside: true,
     cards
-  };
+  });
 }
 function buildSummaryCards(summary, hass, options, sonosEntities) {
   if (summary.kind !== "domain") {
-    return summary.kind === "security" ? buildSecurityCards() : buildBatteryCards(options);
+    return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
   }
   const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
   return grouping === "state" ? buildStateGroupedCards(summary) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
@@ -1120,35 +1220,53 @@ function groupEntries(summary, grouping, hass) {
   });
   return sections;
 }
-function buildSecurityCards() {
-  const buttonTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-  const lockTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
-  const alarmTemplate = { type: "custom:bubble-card", card_type: "button" };
-  const activeIncludes = [
-    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
-      domain: "binary_sensor",
-      attributes: { device_class: deviceClass },
-      state: "on",
-      options: buttonTemplate
-    })),
-    { domain: "lock", state: "unlocked", options: lockTemplate },
-    { domain: "alarm_control_panel", options: alarmTemplate }
-  ];
-  const clearIncludes = [
-    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
-      domain: "binary_sensor",
-      attributes: { device_class: deviceClass },
-      state: "off",
-      options: buttonTemplate
-    })),
-    { domain: "lock", state: "locked", options: lockTemplate }
-  ];
-  return [
-    bubbleSeparator("Active", "mdi:shield-alert"),
-    autoEntitiesGrid({ columns: 2, include: activeIncludes }),
-    bubbleSeparator("Clear", "mdi:shield-check"),
-    autoEntitiesGrid({ columns: 2, include: clearIncludes })
-  ];
+var SECURITY_HAZARD_CLASSES = ["smoke", "gas", "carbon_monoxide", "moisture"];
+var SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
+var SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
+var SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
+var SECURITY_LOCK_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
+var SECURITY_ALARM_TEMPLATE = { type: "custom:bubble-card", card_type: "button" };
+function buildSecurityCards(hass) {
+  const cards = [];
+  if (hasDomain(hass, "alarm_control_panel")) {
+    cards.push(bubbleSeparator("Alarm", "mdi:shield-home"));
+    cards.push(autoEntitiesGrid({ columns: 1, include: [{ domain: "alarm_control_panel", options: SECURITY_ALARM_TEMPLATE }] }));
+  }
+  if (hasDomain(hass, "lock")) {
+    cards.push(bubbleSeparator("Locks", "mdi:lock"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: [{ domain: "lock", options: SECURITY_LOCK_TEMPLATE }] }));
+  }
+  if (hasBinarySensorClass(hass, SECURITY_HAZARD_CLASSES)) {
+    cards.push(bubbleSeparator("Smoke & Leaks", "mdi:smoke-detector"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_HAZARD_CLASSES) }));
+  }
+  if (hasBinarySensorClass(hass, SECURITY_OPENING_CLASSES)) {
+    cards.push(bubbleSeparator("Doors & Windows \u2013 Open", "mdi:door-open"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
+    cards.push(bubbleSeparator("Doors & Windows \u2013 Closed", "mdi:door-closed"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
+  }
+  if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {
+    cards.push(bubbleSeparator("Motion & Presence", "mdi:motion-sensor"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_MOTION_CLASSES) }));
+  }
+  return cards;
+}
+function securityClassIncludes(deviceClasses, state) {
+  return deviceClasses.map((deviceClass) => ({
+    domain: "binary_sensor",
+    attributes: { device_class: deviceClass },
+    ...state ? { state } : {},
+    options: SECURITY_BUTTON_TEMPLATE
+  }));
+}
+function hasDomain(hass, domain) {
+  return Object.keys(hass.states).some((entityId) => getDomain(entityId) === domain);
+}
+function hasBinarySensorClass(hass, deviceClasses) {
+  return Object.values(hass.states).some(
+    (state) => getDomain(state.entity_id) === "binary_sensor" && deviceClasses.includes(String(state.attributes.device_class ?? ""))
+  );
 }
 function buildBatteryCards(options) {
   const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
@@ -1188,7 +1306,7 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
               cards: overviewCards
             }
           ] : [],
-          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns)] : [],
+          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options)] : [],
           ...buildRoomsSection(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
           ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities)
@@ -1275,20 +1393,12 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
       content: "No visible entities found for this area."
     });
   }
-  return {
-    type: "custom:bubble-card",
-    card_type: "pop-up",
+  return bubblePopup({
     hash: getRoomHash(area),
     name: area.name,
     icon: area.icon || "mdi:home-outline",
-    popup_mode: "centered",
-    width_desktop: "680px",
-    bg_opacity: "85",
-    bg_blur: "12",
-    show_previous_button: true,
-    close_by_clicking_outside: true,
     cards
-  };
+  });
 }
 
 // src/strategies.ts

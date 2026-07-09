@@ -7,7 +7,7 @@ import type {
   LovelaceCard,
   StrategyConfig,
 } from "../types";
-import { bubbleSeparator, buttonToHash, fixedHomeCard } from "../cards/common";
+import { bubblePopup, bubbleSeparator, buttonToHash, fixedHomeCard } from "../cards/common";
 import { entityToCard, groupRoomEntities } from "../cards/entity-cards";
 import { buildTopNavigation } from "../cards/navigation";
 import {
@@ -49,7 +49,7 @@ export function buildHomeView(
                 },
               ]
             : []),
-          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns)] : []),
+          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options)] : []),
           ...buildRoomsSection(areas, entities, devices),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
           ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities),
@@ -154,18 +154,10 @@ function buildRoomPopup(
     });
   }
 
-  return {
-    type: "custom:bubble-card",
-    card_type: "pop-up",
+  return bubblePopup({
     hash: getRoomHash(area),
     name: area.name,
     icon: area.icon || "mdi:home-outline",
-    popup_mode: "centered",
-    width_desktop: "680px",
-    bg_opacity: "85",
-    bg_blur: "12",
-    show_previous_button: true,
-    close_by_clicking_outside: true,
     cards,
-  };
+  });
 }
