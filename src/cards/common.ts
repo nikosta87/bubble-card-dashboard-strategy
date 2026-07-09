@@ -1,20 +1,48 @@
 import { ROOMS_POPUP_HASH } from "../constants";
+import { DESIGN, bubbleThemeStyles } from "../design";
 import type { HassArea, LovelaceCard } from "../types";
 import { getRoomHash } from "../utils/entities";
 
 export function fixedHomeCard(card: LovelaceCard): LovelaceCard {
+  const height = DESIGN.homeCard.height;
+
   return {
     ...card,
     card_mod: {
       style: `
         ha-card {
-          height: 190px;
-          min-height: 190px;
-          max-height: 190px;
+          height: ${height};
+          min-height: ${height};
+          max-height: ${height};
           overflow: hidden;
         }
       `,
     },
+  };
+}
+
+/** Shared Bubble Card pop-up wrapper, styled from the design tokens. */
+export function bubblePopup(config: {
+  hash: string;
+  name: string;
+  icon: string;
+  cards: LovelaceCard[];
+  showPreviousButton?: boolean;
+}): LovelaceCard {
+  return {
+    type: "custom:bubble-card",
+    card_type: "pop-up",
+    hash: config.hash,
+    name: config.name,
+    icon: config.icon,
+    popup_mode: "centered",
+    width_desktop: DESIGN.popup.widthDesktop,
+    bg_opacity: DESIGN.popup.bgOpacity,
+    bg_blur: DESIGN.popup.bgBlur,
+    show_previous_button: config.showPreviousButton ?? true,
+    close_by_clicking_outside: true,
+    styles: bubbleThemeStyles(),
+    cards: config.cards,
   };
 }
 

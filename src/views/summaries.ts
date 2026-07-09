@@ -13,8 +13,9 @@ import type {
   ThemeGrouping,
 } from "../types";
 import { autoEntitiesGrid, type AutoEntitiesFilter } from "../cards/auto-entities";
-import { bubbleSeparator, buttonToHash } from "../cards/common";
+import { bubblePopup, bubbleSeparator } from "../cards/common";
 import { entityCardTemplate, entityToCard } from "../cards/entity-cards";
+import { bubbleThemeStyles, summaryTileLayout } from "../design";
 import { getAreaEntities, getDomain, getFriendlyName } from "../utils/entities";
 
 // Summaries group the whole home by function ("all lights", "security", ...)
@@ -189,15 +190,84 @@ function isBatteryState(state: HomeAssistant["states"][string]): boolean {
   return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
 }
 
-/** Builds the grid of summary buttons on the home view. */
-export function buildSummaryNavigation(summaries: ResolvedSummary[], columns: number): LovelaceCard {
+/** Builds the grid of informative summary tiles on the home view. */
+export function buildSummaryNavigation(
+  summaries: ResolvedSummary[],
+  columns: number,
+  options: StrategyConfig,
+): LovelaceCard {
   return {
     type: "grid",
     square: false,
     columns,
-    cards: summaries.map((summary) => buttonToHash(summary.title, summary.icon, `#${summary.id}`)),
+    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options)),
   };
 }
+
+function buildSummaryTile(summary: ResolvedSummary, columns: number, options: StrategyConfig): LovelaceCard {
+  const counter = summaryCounter(summary, options);
+
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "name",
+    name: summary.title,
+    icon: summary.icon,
+    card_layout: summaryTileLayout(columns),
+    styles: bubbleThemeStyles(),
+    button_action: {
+      tap_action: {
+        action: "navigate",
+        navigation_path: `#${summary.id}`,
+      },
+    },
+    ...(counter ? { sub_button: [counter] } : {}),
+  };
+}
+
+// A single live-count chip per tile, only where a count is meaningful, so the
+// tiles stay informative without being overloaded.
+function summaryCounter(summary: ResolvedSummary, options: StrategyConfig): LovelaceCard | undefined {
+  const counter = COUNTER_TEMPLATES[summary.id]?.(options);
+
+  if (!counter) {
+    return undefined;
+  }
+
+  return {
+    name: counter.template,
+    icon: counter.icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: { action: "none" },
+  };
+}
+
+const SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
+
+const COUNTER_TEMPLATES: Record<string, (options: StrategyConfig) => { icon: string; template: string }> = {
+  lights: () => ({
+    icon: "mdi:lightbulb",
+    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length}",
+  }),
+  climate: () => ({
+    icon: "mdi:fire",
+    template:
+      "${Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length}",
+  }),
+  security: () => ({
+    icon: "mdi:shield-alert",
+    template: `\${Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length}`,
+  }),
+  batteries: (options) => {
+    const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    return {
+      icon: "mdi:battery-alert",
+      template: `\${Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length}`,
+    };
+  },
+};
 
 /** Builds one pop-up per active summary. */
 export function buildSummaryPopups(
@@ -217,20 +287,12 @@ function buildSummaryPopup(
 ): LovelaceCard {
   const cards = buildSummaryCards(summary, hass, options, sonosEntities);
 
-  return {
-    type: "custom:bubble-card",
-    card_type: "pop-up",
+  return bubblePopup({
     hash: `#${summary.id}`,
     name: summary.title,
     icon: summary.icon,
-    popup_mode: "centered",
-    width_desktop: "680px",
-    bg_opacity: "85",
-    bg_blur: "12",
-    show_previous_button: true,
-    close_by_clicking_outside: true,
     cards,
-  };
+  });
 }
 
 function buildSummaryCards(
@@ -240,7 +302,7 @@ function buildSummaryCards(
   sonosEntities: string[],
 ): LovelaceCard[] {
   if (summary.kind !== "domain") {
-    return summary.kind === "security" ? buildSecurityCards() : buildBatteryCards(options);
+    return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
   }
 
   const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
@@ -330,38 +392,69 @@ function groupEntries(summary: ResolvedDomainSummary, grouping: ThemeGrouping, h
 
 // --- Security -----------------------------------------------------------------
 
-function buildSecurityCards(): LovelaceCard[] {
-  const buttonTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-  const lockTemplate = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
-  const alarmTemplate = { type: "custom:bubble-card", card_type: "button" };
+const SECURITY_HAZARD_CLASSES = ["smoke", "gas", "carbon_monoxide", "moisture"];
+const SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
+const SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
 
-  const activeIncludes: AutoEntitiesFilter[] = [
-    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
-      domain: "binary_sensor",
-      attributes: { device_class: deviceClass },
-      state: "on",
-      options: buttonTemplate,
-    })),
-    { domain: "lock", state: "unlocked", options: lockTemplate },
-    { domain: "alarm_control_panel", options: alarmTemplate },
-  ];
+const SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
+const SECURITY_LOCK_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
+const SECURITY_ALARM_TEMPLATE = { type: "custom:bubble-card", card_type: "button" };
 
-  const clearIncludes: AutoEntitiesFilter[] = [
-    ...SECURITY_DEVICE_CLASSES.map((deviceClass) => ({
-      domain: "binary_sensor",
-      attributes: { device_class: deviceClass },
-      state: "off",
-      options: buttonTemplate,
-    })),
-    { domain: "lock", state: "locked", options: lockTemplate },
-  ];
+// Security is presented as logical groups (alarm, locks, hazards, doors/windows
+// split by open/closed, motion) rather than a raw active/clear split. Only groups
+// that actually have entities are rendered.
+function buildSecurityCards(hass: HomeAssistant): LovelaceCard[] {
+  const cards: LovelaceCard[] = [];
 
-  return [
-    bubbleSeparator("Active", "mdi:shield-alert"),
-    autoEntitiesGrid({ columns: 2, include: activeIncludes }),
-    bubbleSeparator("Clear", "mdi:shield-check"),
-    autoEntitiesGrid({ columns: 2, include: clearIncludes }),
-  ];
+  if (hasDomain(hass, "alarm_control_panel")) {
+    cards.push(bubbleSeparator("Alarm", "mdi:shield-home"));
+    cards.push(autoEntitiesGrid({ columns: 1, include: [{ domain: "alarm_control_panel", options: SECURITY_ALARM_TEMPLATE }] }));
+  }
+
+  if (hasDomain(hass, "lock")) {
+    cards.push(bubbleSeparator("Locks", "mdi:lock"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: [{ domain: "lock", options: SECURITY_LOCK_TEMPLATE }] }));
+  }
+
+  if (hasBinarySensorClass(hass, SECURITY_HAZARD_CLASSES)) {
+    cards.push(bubbleSeparator("Smoke & Leaks", "mdi:smoke-detector"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_HAZARD_CLASSES) }));
+  }
+
+  if (hasBinarySensorClass(hass, SECURITY_OPENING_CLASSES)) {
+    cards.push(bubbleSeparator("Doors & Windows – Open", "mdi:door-open"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
+    cards.push(bubbleSeparator("Doors & Windows – Closed", "mdi:door-closed"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
+  }
+
+  if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {
+    cards.push(bubbleSeparator("Motion & Presence", "mdi:motion-sensor"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_MOTION_CLASSES) }));
+  }
+
+  return cards;
+}
+
+function securityClassIncludes(deviceClasses: string[], state?: string): AutoEntitiesFilter[] {
+  return deviceClasses.map((deviceClass) => ({
+    domain: "binary_sensor",
+    attributes: { device_class: deviceClass },
+    ...(state ? { state } : {}),
+    options: SECURITY_BUTTON_TEMPLATE,
+  }));
+}
+
+function hasDomain(hass: HomeAssistant, domain: string): boolean {
+  return Object.keys(hass.states).some((entityId) => getDomain(entityId) === domain);
+}
+
+function hasBinarySensorClass(hass: HomeAssistant, deviceClasses: string[]): boolean {
+  return Object.values(hass.states).some(
+    (state) =>
+      getDomain(state.entity_id) === "binary_sensor" &&
+      deviceClasses.includes(String(state.attributes.device_class ?? "")),
+  );
 }
 
 // --- Batteries ----------------------------------------------------------------
