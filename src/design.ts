@@ -10,6 +10,12 @@ export const DESIGN = {
   homeCard: {
     height: "190px",
   },
+  // Bubble Card row heights for cards that benefit from more vertical space than
+  // the default single row.
+  cardRows: {
+    mediaPlayer: 2,
+    alarm: 2,
+  },
   // card_layout per summary-tile column count: wider layouts get more presence,
   // denser layouts stay compact so they never grow too large.
   summaryTileLayout: {

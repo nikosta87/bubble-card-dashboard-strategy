@@ -10,6 +10,7 @@ import type {
 import { bubblePopup, bubbleSeparator, buttonToHash, fixedHomeCard } from "../cards/common";
 import { entityToCard, groupRoomEntities } from "../cards/entity-cards";
 import { buildTopNavigation } from "../cards/navigation";
+import { createTranslator, type Translator } from "../i18n";
 import {
   findFirstStateEntity,
   findPrimaryEntityForArea,
@@ -27,6 +28,7 @@ export function buildHomeView(
   options: StrategyConfig,
   sonosEntities: string[] = [],
 ) {
+  const t = createTranslator(hass);
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
   const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
@@ -49,10 +51,10 @@ export function buildHomeView(
                 },
               ]
             : []),
-          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options)] : []),
-          ...buildRoomsSection(areas, entities, devices),
-          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
-          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities),
+          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : []),
+          ...buildRoomsSection(areas, entities, devices, t),
+          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
+          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t),
         ],
       },
     ],
@@ -97,9 +99,14 @@ function buildOverviewCards(hass: HomeAssistant): LovelaceCard[] {
   ];
 }
 
-function buildRoomsSection(areas: HassArea[], entities: HassEntity[], devices: HassDevice[]): LovelaceCard[] {
+function buildRoomsSection(
+  areas: HassArea[],
+  entities: HassEntity[],
+  devices: HassDevice[],
+  t: Translator,
+): LovelaceCard[] {
   return [
-    bubbleSeparator("Rooms", "mdi:floor-plan"),
+    bubbleSeparator(t("rooms"), "mdi:floor-plan"),
     {
       type: "grid",
       square: false,
@@ -125,6 +132,7 @@ function buildRoomPopup(
   hass: HomeAssistant,
   options: StrategyConfig,
   sonosEntities: string[] = [],
+  t: Translator,
 ): LovelaceCard {
   const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(
     0,
@@ -138,7 +146,7 @@ function buildRoomPopup(
       return;
     }
 
-    cards.push(bubbleSeparator(group.title, group.icon));
+    cards.push(bubbleSeparator(t(group.titleKey), group.icon));
     cards.push({
       type: "grid",
       square: false,
@@ -150,7 +158,7 @@ function buildRoomPopup(
   if (!cards.length) {
     cards.push({
       type: "markdown",
-      content: "No visible entities found for this area.",
+      content: t("noEntities"),
     });
   }
 

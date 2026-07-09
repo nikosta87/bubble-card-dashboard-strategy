@@ -36,6 +36,10 @@ export type HomeAssistant = {
   user?: {
     name?: string;
   };
+  language?: string;
+  locale?: {
+    language?: string;
+  };
   states: Record<string, HassStateObject>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   connection?: {
@@ -75,6 +79,7 @@ export type StrategyConfig = {
   show_battery_summary?: boolean;
   hide_mobile_app_batteries?: boolean;
   battery_critical_below?: number;
+  show_alarm_controls?: boolean;
 };
 
 export type LovelaceCard = Record<string, unknown>;

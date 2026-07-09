@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.19.0";
+var VERSION = "0.20.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
@@ -12,6 +12,7 @@ var DEFAULT_ROOM_ORDER = "alphabetical";
 var DEFAULT_SUMMARY_COLUMNS = 2;
 var DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
 var DEFAULT_BATTERY_CRITICAL_BELOW = 20;
+var DEFAULT_SHOW_ALARM_CONTROLS = true;
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
   alarm_control_panel: "button",
@@ -41,6 +42,58 @@ var DEFAULT_IGNORED_DOMAINS = /* @__PURE__ */ new Set([
   "update",
   "zone"
 ]);
+
+// src/design.ts
+var DESIGN = {
+  popup: {
+    widthDesktop: "540px",
+    bgOpacity: "92",
+    bgBlur: "14"
+  },
+  homeCard: {
+    height: "190px"
+  },
+  // Bubble Card row heights for cards that benefit from more vertical space than
+  // the default single row.
+  cardRows: {
+    mediaPlayer: 2,
+    alarm: 2
+  },
+  // card_layout per summary-tile column count: wider layouts get more presence,
+  // denser layouts stay compact so they never grow too large.
+  summaryTileLayout: {
+    1: "large",
+    2: "large",
+    4: "normal"
+  }
+};
+var THEME_TOKENS = {
+  "--bcds-accent": "var(--primary-color)",
+  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
+};
+var BUBBLE_BINDINGS = {
+  "--bubble-accent-color": "var(--bcds-accent)",
+  "--bubble-border-radius": "var(--bcds-radius)"
+};
+function bubbleThemeStyles() {
+  const declarations = [...Object.entries(THEME_TOKENS), ...Object.entries(BUBBLE_BINDINGS)].map(([name, value]) => `  ${name}: ${value};`).join("\n");
+  return `ha-card {
+${declarations}
+}`;
+}
+function summaryTileLayout(columns) {
+  return DESIGN.summaryTileLayout[columns] ?? "normal";
+}
+var COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
+function tileStyles(counterExpression) {
+  const base = bubbleThemeStyles();
+  if (!counterExpression) {
+    return base;
+  }
+  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
+  return `${base}
+${write}`;
+}
 
 // src/cards/media-player.ts
 function mediaPlayerToCard(entityId, options, sonosEntities = []) {
@@ -77,7 +130,8 @@ function mediaPlayerToCard(entityId, options, sonosEntities = []) {
       return {
         type: "custom:bubble-card",
         card_type: "media-player",
-        entity: entityId
+        entity: entityId,
+        rows: DESIGN.cardRows.mediaPlayer
       };
   }
 }
@@ -244,6 +298,7 @@ var BOOLEAN_FIELDS = /* @__PURE__ */ new Set([
   "show_security_summary",
   "show_climate_summary",
   "show_battery_summary",
+  "show_alarm_controls",
   "hide_mobile_app_batteries"
 ]);
 var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
@@ -307,6 +362,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const showBatterySummary = this._config.show_battery_summary ?? true;
     const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
     const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    const showAlarmControls = this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
     this.innerHTML = `
       <style>
         :host {
@@ -521,6 +577,11 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <div class="hint">Shows locks, smoke &amp; leak sensors, doors &amp; windows (open/closed) and motion, plus any alarm panel, in logical groups.</div>
         </div>
         <div class="field">
+          <label for="show_alarm_controls">Alarm controls</label>
+          <input id="show_alarm_controls" data-field="show_alarm_controls" type="checkbox" ${showAlarmControls ? "checked" : ""}>
+          <div class="hint">Shows arm/disarm buttons on the alarm tile in the security summary. Turn off for a display-only alarm.</div>
+        </div>
+        <div class="field">
           <label for="show_climate_summary">Climate summary</label>
           <input id="show_climate_summary" data-field="show_climate_summary" type="checkbox" ${showClimateSummary ? "checked" : ""}>
         </div>
@@ -691,52 +752,6 @@ function roomOrderOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
-// src/design.ts
-var DESIGN = {
-  popup: {
-    widthDesktop: "540px",
-    bgOpacity: "92",
-    bgBlur: "14"
-  },
-  homeCard: {
-    height: "190px"
-  },
-  // card_layout per summary-tile column count: wider layouts get more presence,
-  // denser layouts stay compact so they never grow too large.
-  summaryTileLayout: {
-    1: "large",
-    2: "large",
-    4: "normal"
-  }
-};
-var THEME_TOKENS = {
-  "--bcds-accent": "var(--primary-color)",
-  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
-};
-var BUBBLE_BINDINGS = {
-  "--bubble-accent-color": "var(--bcds-accent)",
-  "--bubble-border-radius": "var(--bcds-radius)"
-};
-function bubbleThemeStyles() {
-  const declarations = [...Object.entries(THEME_TOKENS), ...Object.entries(BUBBLE_BINDINGS)].map(([name, value]) => `  ${name}: ${value};`).join("\n");
-  return `ha-card {
-${declarations}
-}`;
-}
-function summaryTileLayout(columns) {
-  return DESIGN.summaryTileLayout[columns] ?? "normal";
-}
-var COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
-function tileStyles(counterExpression) {
-  const base = bubbleThemeStyles();
-  if (!counterExpression) {
-    return base;
-  }
-  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
-  return `${base}
-${write}`;
-}
-
 // src/cards/common.ts
 function fixedHomeCard(card) {
   const height = DESIGN.homeCard.height;
@@ -821,37 +836,37 @@ function buildFooter(areas) {
 function groupRoomEntities(entities) {
   const groupDefinitions = [
     {
-      title: "Lights",
+      titleKey: "lights",
       icon: "mdi:lightbulb-group",
       domains: ["light", "switch", "input_boolean"],
       columns: 2
     },
     {
-      title: "Climate",
+      titleKey: "climate",
       icon: "mdi:thermostat",
       domains: ["climate", "fan", "humidifier"],
       columns: 2
     },
     {
-      title: "Media",
+      titleKey: "media",
       icon: "mdi:speaker",
       domains: ["media_player"],
       columns: 2
     },
     {
-      title: "Covers",
+      titleKey: "covers",
       icon: "mdi:window-shutter",
       domains: ["cover"],
       columns: 1
     },
     {
-      title: "Scenes",
+      titleKey: "scenes",
       icon: "mdi:palette",
       domains: ["scene", "script", "button"],
       columns: 2
     },
     {
-      title: "Devices",
+      titleKey: "devices",
       icon: "mdi:power-plug",
       domains: ["alarm_control_panel", "lock", "select", "vacuum"],
       columns: 2
@@ -990,6 +1005,76 @@ function navigationSubButton(name, icon, navigationPath) {
   };
 }
 
+// src/i18n.ts
+var STRINGS = {
+  en: {
+    lights: "Lights",
+    security: "Security",
+    climate: "Climate",
+    batteries: "Batteries",
+    media: "Media",
+    covers: "Covers",
+    scenes: "Scenes",
+    devices: "Devices",
+    rooms: "Rooms",
+    on: "On",
+    off: "Off",
+    allOn: "All on",
+    allOff: "All off",
+    alarm: "Alarm",
+    locks: "Locks",
+    lock: "Lock",
+    unlock: "Unlock",
+    smokeAndLeaks: "Smoke & Leaks",
+    doorsWindowsOpen: "Doors & Windows \u2013 Open",
+    doorsWindowsClosed: "Doors & Windows \u2013 Closed",
+    motionAndPresence: "Motion & Presence",
+    critical: "Critical",
+    ok: "OK",
+    armAway: "Away",
+    armHome: "Home",
+    disarm: "Disarm",
+    noEntities: "No visible entities found for this area."
+  },
+  de: {
+    lights: "Licht",
+    security: "Sicherheit",
+    climate: "Klima",
+    batteries: "Batterien",
+    media: "Medien",
+    covers: "Rollos",
+    scenes: "Szenen",
+    devices: "Ger\xE4te",
+    rooms: "R\xE4ume",
+    on: "An",
+    off: "Aus",
+    allOn: "Alle an",
+    allOff: "Alle aus",
+    alarm: "Alarm",
+    locks: "Schl\xF6sser",
+    lock: "Abschlie\xDFen",
+    unlock: "Aufschlie\xDFen",
+    smokeAndLeaks: "Rauch & Lecks",
+    doorsWindowsOpen: "T\xFCren & Fenster \u2013 Offen",
+    doorsWindowsClosed: "T\xFCren & Fenster \u2013 Geschlossen",
+    motionAndPresence: "Bewegung & Anwesenheit",
+    critical: "Kritisch",
+    ok: "OK",
+    armAway: "Abwesend",
+    armHome: "Zuhause",
+    disarm: "Entsch\xE4rfen",
+    noEntities: "Keine sichtbaren Entit\xE4ten f\xFCr diesen Bereich."
+  }
+};
+function getLanguage(hass) {
+  const raw = (hass.language || hass.locale?.language || "en").toLowerCase();
+  return raw.startsWith("de") ? "de" : "en";
+}
+function createTranslator(hass) {
+  const language = getLanguage(hass);
+  return (key) => STRINGS[language][key] ?? STRINGS.en[key];
+}
+
 // src/cards/auto-entities.ts
 function autoEntitiesGrid(config) {
   return {
@@ -1107,21 +1192,21 @@ function isSecurityState(state) {
 function isBatteryState(state) {
   return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
 }
-function buildSummaryNavigation(summaries, columns, options) {
+function buildSummaryNavigation(summaries, columns, options, t) {
   return {
     type: "grid",
     square: false,
     columns,
-    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options))
+    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options, t))
   };
 }
-function buildSummaryTile(summary, columns, options) {
+function buildSummaryTile(summary, columns, options, t) {
   const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
   return {
     type: "custom:bubble-card",
     card_type: "button",
     button_type: "name",
-    name: summary.title,
+    name: t(summary.id),
     icon: summary.icon,
     card_layout: summaryTileLayout(columns),
     // The counter value is written into the sub-button from the styles template
@@ -1170,32 +1255,76 @@ var COUNTER_EXPRESSIONS = {
     };
   }
 };
-function buildSummaryPopups(summaries, hass, options, sonosEntities = []) {
-  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities));
+function buildSummaryPopups(summaries, hass, options, sonosEntities = [], t) {
+  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities, t));
 }
-function buildSummaryPopup(summary, hass, options, sonosEntities) {
-  const cards = buildSummaryCards(summary, hass, options, sonosEntities);
+function buildSummaryPopup(summary, hass, options, sonosEntities, t) {
+  const cards = buildSummaryCards(summary, hass, options, sonosEntities, t);
   return bubblePopup({
     hash: `#${summary.id}`,
-    name: summary.title,
+    name: t(summary.id),
     icon: summary.icon,
     cards
   });
 }
-function buildSummaryCards(summary, hass, options, sonosEntities) {
+function buildSummaryCards(summary, hass, options, sonosEntities, t) {
   if (summary.kind !== "domain") {
-    return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
+    return summary.kind === "security" ? buildSecurityCards(hass, options, t) : buildBatteryCards(options, t);
   }
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
-  return grouping === "state" ? buildStateGroupedCards(summary) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
+  return grouping === "state" ? buildStateGroupedCards(summary, t) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
 }
-function buildStateGroupedCards(summary) {
+function buildStateGroupedCards(summary, t) {
+  const isLights = summary.domains.includes("light");
   return [
-    bubbleSeparator("On", "mdi:toggle-switch"),
+    stateSeparator(
+      t("on"),
+      "mdi:toggle-switch",
+      stateCountExpression(summary.domains, "on"),
+      isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : void 0
+    ),
     autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on") }),
-    bubbleSeparator("Off", "mdi:toggle-switch-off-outline"),
+    stateSeparator(
+      t("off"),
+      "mdi:toggle-switch-off-outline",
+      stateCountExpression(summary.domains, "off"),
+      isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : void 0
+    ),
     autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off") })
   ];
+}
+function stateSeparator(name, icon, countExpression, master) {
+  return {
+    type: "custom:bubble-card",
+    card_type: "separator",
+    name,
+    icon,
+    styles: `\${card.style.display = (${countExpression} > 0) ? '' : 'none'}`,
+    ...master ? { sub_button: [master] } : {}
+  };
+}
+function masterSubButton(name, icon, service) {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: "all" },
+      data: {}
+    }
+  };
+}
+function stateCountExpression(domains, bucket) {
+  const conditions = domains.flatMap(
+    (domain) => (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map(
+      (state) => `(s.entity_id.startsWith('${domain}.') && s.state === '${state}')`
+    )
+  ).join(" || ");
+  return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
 }
 function buildStateIncludes(domains, bucket) {
   return domains.flatMap(
@@ -1244,33 +1373,106 @@ var SECURITY_HAZARD_CLASSES = ["smoke", "gas", "carbon_monoxide", "moisture"];
 var SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
 var SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
 var SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-var SECURITY_LOCK_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
-var SECURITY_ALARM_TEMPLATE = { type: "custom:bubble-card", card_type: "button" };
-function buildSecurityCards(hass) {
+function buildSecurityCards(hass, options, t) {
   const cards = [];
-  if (hasDomain(hass, "alarm_control_panel")) {
-    cards.push(bubbleSeparator("Alarm", "mdi:shield-home"));
-    cards.push(autoEntitiesGrid({ columns: 1, include: [{ domain: "alarm_control_panel", options: SECURITY_ALARM_TEMPLATE }] }));
+  const showAlarmControls = options.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
+  const alarms = entityIdsForDomain(hass, "alarm_control_panel");
+  if (alarms.length) {
+    cards.push(bubbleSeparator(t("alarm"), "mdi:shield-home"));
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: 1,
+      cards: alarms.map((entityId) => buildAlarmCard(entityId, showAlarmControls, t))
+    });
   }
-  if (hasDomain(hass, "lock")) {
-    cards.push(bubbleSeparator("Locks", "mdi:lock"));
-    cards.push(autoEntitiesGrid({ columns: 2, include: [{ domain: "lock", options: SECURITY_LOCK_TEMPLATE }] }));
+  const locks = entityIdsForDomain(hass, "lock");
+  if (locks.length) {
+    cards.push(bubbleSeparator(t("locks"), "mdi:lock"));
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: 2,
+      cards: locks.map((entityId) => buildLockCard(entityId, t))
+    });
   }
   if (hasBinarySensorClass(hass, SECURITY_HAZARD_CLASSES)) {
-    cards.push(bubbleSeparator("Smoke & Leaks", "mdi:smoke-detector"));
+    cards.push(bubbleSeparator(t("smokeAndLeaks"), "mdi:smoke-detector"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_HAZARD_CLASSES) }));
   }
   if (hasBinarySensorClass(hass, SECURITY_OPENING_CLASSES)) {
-    cards.push(bubbleSeparator("Doors & Windows \u2013 Open", "mdi:door-open"));
+    cards.push(bubbleSeparator(t("doorsWindowsOpen"), "mdi:door-open"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
-    cards.push(bubbleSeparator("Doors & Windows \u2013 Closed", "mdi:door-closed"));
+    cards.push(bubbleSeparator(t("doorsWindowsClosed"), "mdi:door-closed"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
   }
   if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {
-    cards.push(bubbleSeparator("Motion & Presence", "mdi:motion-sensor"));
+    cards.push(bubbleSeparator(t("motionAndPresence"), "mdi:motion-sensor"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_MOTION_CLASSES) }));
   }
   return cards;
+}
+function buildAlarmCard(entityId, showControls, t) {
+  const card = {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "state",
+    entity: entityId,
+    rows: DESIGN.cardRows.alarm
+  };
+  if (showControls) {
+    card.sub_button = [
+      alarmControl(t("armAway"), "mdi:shield-lock", "alarm_control_panel.alarm_arm_away", entityId),
+      alarmControl(t("armHome"), "mdi:shield-home", "alarm_control_panel.alarm_arm_home", entityId),
+      alarmControl(t("disarm"), "mdi:shield-off", "alarm_control_panel.alarm_disarm", entityId)
+    ];
+  }
+  return card;
+}
+function alarmControl(name, icon, service, entityId) {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: entityId },
+      data: {}
+    }
+  };
+}
+function buildLockCard(entityId, t) {
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "state",
+    entity: entityId,
+    sub_button: [
+      lockControl(t("unlock"), "mdi:lock-open-variant", "lock.unlock", entityId),
+      lockControl(t("lock"), "mdi:lock", "lock.lock", entityId)
+    ]
+  };
+}
+function lockControl(name, icon, service, entityId) {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: entityId },
+      data: {}
+    }
+  };
+}
+function entityIdsForDomain(hass, domain) {
+  return Object.keys(hass.states).filter((entityId) => getDomain(entityId) === domain).sort();
 }
 function securityClassIncludes(deviceClasses, state) {
   return deviceClasses.map((deviceClass) => ({
@@ -1280,15 +1482,12 @@ function securityClassIncludes(deviceClasses, state) {
     options: SECURITY_BUTTON_TEMPLATE
   }));
 }
-function hasDomain(hass, domain) {
-  return Object.keys(hass.states).some((entityId) => getDomain(entityId) === domain);
-}
 function hasBinarySensorClass(hass, deviceClasses) {
   return Object.values(hass.states).some(
     (state) => getDomain(state.entity_id) === "binary_sensor" && deviceClasses.includes(String(state.attributes.device_class ?? ""))
   );
 }
-function buildBatteryCards(options) {
+function buildBatteryCards(options, t) {
   const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
   const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
   const hideMobile = options.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
@@ -1298,15 +1497,16 @@ function buildBatteryCards(options) {
     { domain: "sensor", attributes: { device_class: "battery" }, state, options: template }
   ];
   return [
-    bubbleSeparator("Critical", "mdi:battery-alert"),
+    bubbleSeparator(t("critical"), "mdi:battery-alert"),
     autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${threshold}`), exclude, sort }),
-    bubbleSeparator("OK", "mdi:battery"),
+    bubbleSeparator(t("ok"), "mdi:battery"),
     autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${threshold}`), exclude, sort })
   ];
 }
 
 // src/views/home-view.ts
 function buildHomeView(areas, entities, devices, hass, options, sonosEntities = []) {
+  const t = createTranslator(hass);
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
   const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
@@ -1326,10 +1526,10 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
               cards: overviewCards
             }
           ] : [],
-          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options)] : [],
-          ...buildRoomsSection(areas, entities, devices),
-          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities)),
-          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities)
+          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : [],
+          ...buildRoomsSection(areas, entities, devices, t),
+          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
+          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t)
         ]
       }
     ]
@@ -1369,9 +1569,9 @@ function buildOverviewCards(hass) {
     )
   ];
 }
-function buildRoomsSection(areas, entities, devices) {
+function buildRoomsSection(areas, entities, devices, t) {
   return [
-    bubbleSeparator("Rooms", "mdi:floor-plan"),
+    bubbleSeparator(t("rooms"), "mdi:floor-plan"),
     {
       type: "grid",
       square: false,
@@ -1388,7 +1588,7 @@ function buildRoomsSection(areas, entities, devices) {
     }
   ];
 }
-function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = []) {
+function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = [], t) {
   const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(
     0,
     options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA
@@ -1399,7 +1599,7 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
     if (!group.entities.length) {
       return;
     }
-    cards.push(bubbleSeparator(group.title, group.icon));
+    cards.push(bubbleSeparator(t(group.titleKey), group.icon));
     cards.push({
       type: "grid",
       square: false,
@@ -1410,7 +1610,7 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
   if (!cards.length) {
     cards.push({
       type: "markdown",
-      content: "No visible entities found for this area."
+      content: t("noEntities")
     });
   }
   return bubblePopup({
