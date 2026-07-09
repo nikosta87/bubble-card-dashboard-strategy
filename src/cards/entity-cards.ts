@@ -1,10 +1,11 @@
 import { DOMAIN_CARD_TYPES } from "../constants";
 import type { HassEntity, LovelaceCard, StrategyConfig } from "../types";
+import type { TranslationKey } from "../i18n";
 import { getDomain } from "../utils/entities";
 import { mediaPlayerToCard } from "./media-player";
 
 type RoomEntityGroup = {
-  title: string;
+  titleKey: TranslationKey;
   icon: string;
   domains: string[];
   columns: number;
@@ -12,39 +13,39 @@ type RoomEntityGroup = {
 };
 
 export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
-  const groupDefinitions = [
+  const groupDefinitions: Omit<RoomEntityGroup, "entities">[] = [
     {
-      title: "Lights",
+      titleKey: "lights",
       icon: "mdi:lightbulb-group",
       domains: ["light", "switch", "input_boolean"],
       columns: 2,
     },
     {
-      title: "Climate",
+      titleKey: "climate",
       icon: "mdi:thermostat",
       domains: ["climate", "fan", "humidifier"],
       columns: 2,
     },
     {
-      title: "Media",
+      titleKey: "media",
       icon: "mdi:speaker",
       domains: ["media_player"],
       columns: 2,
     },
     {
-      title: "Covers",
+      titleKey: "covers",
       icon: "mdi:window-shutter",
       domains: ["cover"],
       columns: 1,
     },
     {
-      title: "Scenes",
+      titleKey: "scenes",
       icon: "mdi:palette",
       domains: ["scene", "script", "button"],
       columns: 2,
     },
     {
-      title: "Devices",
+      titleKey: "devices",
       icon: "mdi:power-plug",
       domains: ["alarm_control_panel", "lock", "select", "vacuum"],
       columns: 2,

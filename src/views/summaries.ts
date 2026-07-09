@@ -1,6 +1,7 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
+  DEFAULT_SHOW_ALARM_CONTROLS,
 } from "../constants";
 import type {
   HassArea,
@@ -14,7 +15,8 @@ import type {
 import { autoEntitiesGrid, type AutoEntitiesFilter } from "../cards/auto-entities";
 import { bubblePopup, bubbleSeparator } from "../cards/common";
 import { entityCardTemplate, entityToCard } from "../cards/entity-cards";
-import { summaryTileLayout, tileStyles } from "../design";
+import { DESIGN, summaryTileLayout, tileStyles } from "../design";
+import { type TranslationKey, type Translator } from "../i18n";
 import { getAreaEntities, getDomain, getFriendlyName } from "../utils/entities";
 
 // Summaries group the whole home by function ("all lights", "security", ...)
@@ -199,23 +201,24 @@ export function buildSummaryNavigation(
   summaries: ResolvedSummary[],
   columns: number,
   options: StrategyConfig,
+  t: Translator,
 ): LovelaceCard {
   return {
     type: "grid",
     square: false,
     columns,
-    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options)),
+    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options, t)),
   };
 }
 
-function buildSummaryTile(summary: ResolvedSummary, columns: number, options: StrategyConfig): LovelaceCard {
+function buildSummaryTile(summary: ResolvedSummary, columns: number, options: StrategyConfig, t: Translator): LovelaceCard {
   const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
 
   return {
     type: "custom:bubble-card",
     card_type: "button",
     button_type: "name",
-    name: summary.title,
+    name: t(summary.id as TranslationKey),
     icon: summary.icon,
     card_layout: summaryTileLayout(columns),
     // The counter value is written into the sub-button from the styles template
@@ -280,8 +283,9 @@ export function buildSummaryPopups(
   hass: HomeAssistant,
   options: StrategyConfig,
   sonosEntities: string[] = [],
+  t: Translator,
 ): LovelaceCard[] {
-  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities));
+  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities, t));
 }
 
 function buildSummaryPopup(
@@ -289,12 +293,13 @@ function buildSummaryPopup(
   hass: HomeAssistant,
   options: StrategyConfig,
   sonosEntities: string[],
+  t: Translator,
 ): LovelaceCard {
-  const cards = buildSummaryCards(summary, hass, options, sonosEntities);
+  const cards = buildSummaryCards(summary, hass, options, sonosEntities, t);
 
   return bubblePopup({
     hash: `#${summary.id}`,
-    name: summary.title,
+    name: t(summary.id as TranslationKey),
     icon: summary.icon,
     cards,
   });
@@ -305,30 +310,87 @@ function buildSummaryCards(
   hass: HomeAssistant,
   options: StrategyConfig,
   sonosEntities: string[],
+  t: Translator,
 ): LovelaceCard[] {
   if (summary.kind !== "domain") {
-    return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
+    return summary.kind === "security" ? buildSecurityCards(hass, options, t) : buildBatteryCards(options, t);
   }
 
   // The global theme_grouping option, when set, overrides the per-summary
   // default (lights: status, climate: room).
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
   return grouping === "state"
-    ? buildStateGroupedCards(summary)
+    ? buildStateGroupedCards(summary, t)
     : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
 }
 
 // --- Lights / Climate ---------------------------------------------------------
 
 // Status grouping uses auto-entities so the On/Off groups update live and stay
-// sorted alphabetically as entities change state.
-function buildStateGroupedCards(summary: ResolvedDomainSummary): LovelaceCard[] {
+// sorted alphabetically as entities change state. Each separator hides itself
+// when its group is empty and (for lights) carries an "all on/off" master button.
+function buildStateGroupedCards(summary: ResolvedDomainSummary, t: Translator): LovelaceCard[] {
+  const isLights = summary.domains.includes("light");
+
   return [
-    bubbleSeparator("On", "mdi:toggle-switch"),
+    stateSeparator(
+      t("on"),
+      "mdi:toggle-switch",
+      stateCountExpression(summary.domains, "on"),
+      isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : undefined,
+    ),
     autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on") }),
-    bubbleSeparator("Off", "mdi:toggle-switch-off-outline"),
+    stateSeparator(
+      t("off"),
+      "mdi:toggle-switch-off-outline",
+      stateCountExpression(summary.domains, "off"),
+      isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : undefined,
+    ),
     autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off") }),
   ];
+}
+
+// A separator that collapses (display:none) when no entity matches its group,
+// so an empty "On"/"Off" section leaves no dangling heading.
+function stateSeparator(name: string, icon: string, countExpression: string, master?: LovelaceCard): LovelaceCard {
+  return {
+    type: "custom:bubble-card",
+    card_type: "separator",
+    name,
+    icon,
+    styles: `\${card.style.display = (${countExpression} > 0) ? '' : 'none'}`,
+    ...(master ? { sub_button: [master] } : {}),
+  };
+}
+
+function masterSubButton(name: string, icon: string, service: string): LovelaceCard {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: "all" },
+      data: {},
+    },
+  };
+}
+
+// Client-side expression counting the entities that fall into a status bucket,
+// used to show/hide the matching separator.
+function stateCountExpression(domains: string[], bucket: "on" | "off"): string {
+  const conditions = domains
+    .flatMap((domain) =>
+      (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map(
+        (state) => `(s.entity_id.startsWith('${domain}.') && s.state === '${state}')`,
+      ),
+    )
+    .join(" || ");
+
+  return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
 }
 
 function buildStateIncludes(domains: string[], bucket: "on" | "off"): AutoEntitiesFilter[] {
@@ -404,43 +466,128 @@ const SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
 const SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
 
 const SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-const SECURITY_LOCK_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "switch" };
-const SECURITY_ALARM_TEMPLATE = { type: "custom:bubble-card", card_type: "button" };
 
 // Security is presented as logical groups (alarm, locks, hazards, doors/windows
 // split by open/closed, motion) rather than a raw active/clear split. Only groups
 // that actually have entities are rendered.
-function buildSecurityCards(hass: HomeAssistant): LovelaceCard[] {
+function buildSecurityCards(hass: HomeAssistant, options: StrategyConfig, t: Translator): LovelaceCard[] {
   const cards: LovelaceCard[] = [];
+  const showAlarmControls = options.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
 
-  if (hasDomain(hass, "alarm_control_panel")) {
-    cards.push(bubbleSeparator("Alarm", "mdi:shield-home"));
-    cards.push(autoEntitiesGrid({ columns: 1, include: [{ domain: "alarm_control_panel", options: SECURITY_ALARM_TEMPLATE }] }));
+  const alarms = entityIdsForDomain(hass, "alarm_control_panel");
+  if (alarms.length) {
+    cards.push(bubbleSeparator(t("alarm"), "mdi:shield-home"));
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: 1,
+      cards: alarms.map((entityId) => buildAlarmCard(entityId, showAlarmControls, t)),
+    });
   }
 
-  if (hasDomain(hass, "lock")) {
-    cards.push(bubbleSeparator("Locks", "mdi:lock"));
-    cards.push(autoEntitiesGrid({ columns: 2, include: [{ domain: "lock", options: SECURITY_LOCK_TEMPLATE }] }));
+  const locks = entityIdsForDomain(hass, "lock");
+  if (locks.length) {
+    cards.push(bubbleSeparator(t("locks"), "mdi:lock"));
+    cards.push({
+      type: "grid",
+      square: false,
+      columns: 2,
+      cards: locks.map((entityId) => buildLockCard(entityId, t)),
+    });
   }
 
   if (hasBinarySensorClass(hass, SECURITY_HAZARD_CLASSES)) {
-    cards.push(bubbleSeparator("Smoke & Leaks", "mdi:smoke-detector"));
+    cards.push(bubbleSeparator(t("smokeAndLeaks"), "mdi:smoke-detector"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_HAZARD_CLASSES) }));
   }
 
   if (hasBinarySensorClass(hass, SECURITY_OPENING_CLASSES)) {
-    cards.push(bubbleSeparator("Doors & Windows – Open", "mdi:door-open"));
+    cards.push(bubbleSeparator(t("doorsWindowsOpen"), "mdi:door-open"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
-    cards.push(bubbleSeparator("Doors & Windows – Closed", "mdi:door-closed"));
+    cards.push(bubbleSeparator(t("doorsWindowsClosed"), "mdi:door-closed"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
   }
 
   if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {
-    cards.push(bubbleSeparator("Motion & Presence", "mdi:motion-sensor"));
+    cards.push(bubbleSeparator(t("motionAndPresence"), "mdi:motion-sensor"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_MOTION_CLASSES) }));
   }
 
   return cards;
+}
+
+// Alarm panels render as a taller, interactive card: state on the main button
+// plus arm/disarm controls (which can be hidden from the editor).
+function buildAlarmCard(entityId: string, showControls: boolean, t: Translator): LovelaceCard {
+  const card: LovelaceCard = {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "state",
+    entity: entityId,
+    rows: DESIGN.cardRows.alarm,
+  };
+
+  if (showControls) {
+    card.sub_button = [
+      alarmControl(t("armAway"), "mdi:shield-lock", "alarm_control_panel.alarm_arm_away", entityId),
+      alarmControl(t("armHome"), "mdi:shield-home", "alarm_control_panel.alarm_arm_home", entityId),
+      alarmControl(t("disarm"), "mdi:shield-off", "alarm_control_panel.alarm_disarm", entityId),
+    ];
+  }
+
+  return card;
+}
+
+function alarmControl(name: string, icon: string, service: string, entityId: string): LovelaceCard {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: entityId },
+      data: {},
+    },
+  };
+}
+
+// Locks render with explicit unlock/lock controls instead of a plain toggle.
+function buildLockCard(entityId: string, t: Translator): LovelaceCard {
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "state",
+    entity: entityId,
+    sub_button: [
+      lockControl(t("unlock"), "mdi:lock-open-variant", "lock.unlock", entityId),
+      lockControl(t("lock"), "mdi:lock", "lock.lock", entityId),
+    ],
+  };
+}
+
+function lockControl(name: string, icon: string, service: string, entityId: string): LovelaceCard {
+  return {
+    name,
+    icon,
+    show_name: true,
+    show_icon: true,
+    show_background: true,
+    tap_action: {
+      action: "call-service",
+      service,
+      target: { entity_id: entityId },
+      data: {},
+    },
+  };
+}
+
+function entityIdsForDomain(hass: HomeAssistant, domain: string): string[] {
+  return Object.keys(hass.states)
+    .filter((entityId) => getDomain(entityId) === domain)
+    .sort();
 }
 
 function securityClassIncludes(deviceClasses: string[], state?: string): AutoEntitiesFilter[] {
@@ -450,10 +597,6 @@ function securityClassIncludes(deviceClasses: string[], state?: string): AutoEnt
     ...(state ? { state } : {}),
     options: SECURITY_BUTTON_TEMPLATE,
   }));
-}
-
-function hasDomain(hass: HomeAssistant, domain: string): boolean {
-  return Object.keys(hass.states).some((entityId) => getDomain(entityId) === domain);
 }
 
 function hasBinarySensorClass(hass: HomeAssistant, deviceClasses: string[]): boolean {
@@ -466,7 +609,7 @@ function hasBinarySensorClass(hass: HomeAssistant, deviceClasses: string[]): boo
 
 // --- Batteries ----------------------------------------------------------------
 
-function buildBatteryCards(options: StrategyConfig): LovelaceCard[] {
+function buildBatteryCards(options: StrategyConfig, t: Translator): LovelaceCard[] {
   const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
   const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
   const hideMobile = options.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
@@ -478,9 +621,9 @@ function buildBatteryCards(options: StrategyConfig): LovelaceCard[] {
   ];
 
   return [
-    bubbleSeparator("Critical", "mdi:battery-alert"),
+    bubbleSeparator(t("critical"), "mdi:battery-alert"),
     autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${threshold}`), exclude, sort }),
-    bubbleSeparator("OK", "mdi:battery"),
+    bubbleSeparator(t("ok"), "mdi:battery"),
     autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${threshold}`), exclude, sort }),
   ];
 }

@@ -5,6 +5,7 @@ import {
   DEFAULT_MAX_ENTITIES_PER_AREA,
   DEFAULT_MEDIA_PLAYER_CARD,
   DEFAULT_ROOM_ORDER,
+  DEFAULT_SHOW_ALARM_CONTROLS,
   DEFAULT_SHOW_CAMERA_BUTTON,
   DEFAULT_SUMMARY_COLUMNS,
 } from "./constants";
@@ -21,6 +22,7 @@ const BOOLEAN_FIELDS = new Set([
   "show_security_summary",
   "show_climate_summary",
   "show_battery_summary",
+  "show_alarm_controls",
   "hide_mobile_app_batteries",
 ]);
 
@@ -98,6 +100,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
     const showBatterySummary = this._config.show_battery_summary ?? true;
     const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
     const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    const showAlarmControls = this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
 
     this.innerHTML = `
       <style>
@@ -311,6 +314,11 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           <label for="show_security_summary">Security summary</label>
           <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
           <div class="hint">Shows locks, smoke &amp; leak sensors, doors &amp; windows (open/closed) and motion, plus any alarm panel, in logical groups.</div>
+        </div>
+        <div class="field">
+          <label for="show_alarm_controls">Alarm controls</label>
+          <input id="show_alarm_controls" data-field="show_alarm_controls" type="checkbox" ${showAlarmControls ? "checked" : ""}>
+          <div class="hint">Shows arm/disarm buttons on the alarm tile in the security summary. Turn off for a display-only alarm.</div>
         </div>
         <div class="field">
           <label for="show_climate_summary">Climate summary</label>

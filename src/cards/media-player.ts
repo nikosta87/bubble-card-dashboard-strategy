@@ -2,6 +2,7 @@ import {
   DEFAULT_ENABLE_SONOS_GROUPING,
   DEFAULT_MEDIA_PLAYER_CARD,
 } from "../constants";
+import { DESIGN } from "../design";
 import type { LovelaceCard, MediaPlayerCardType, StrategyConfig } from "../types";
 
 export function mediaPlayerToCard(
@@ -45,6 +46,7 @@ export function mediaPlayerToCard(
         type: "custom:bubble-card",
         card_type: "media-player",
         entity: entityId,
+        rows: DESIGN.cardRows.mediaPlayer,
       };
   }
 }
