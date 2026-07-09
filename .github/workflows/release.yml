@@ -22,8 +22,22 @@ jobs:
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists, nothing to do."
+            exit 0
+          fi
+
+          echo "Creating release $TAG"
+
+          # Use the merge commit body as the changelog so the release notes
+          # describe what actually changed. Fall back to auto-generated notes
+          # when the commit has no body.
+          git log -1 --pretty=format:'%b' "$GITHUB_SHA" > /tmp/release-notes.md
+
+          if [ -s /tmp/release-notes.md ]; then
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --target "$GITHUB_SHA" \
+              --notes-file /tmp/release-notes.md
           else
-            echo "Creating release $TAG"
             gh release create "$TAG" \
               --title "$TAG" \
               --target "$GITHUB_SHA" \

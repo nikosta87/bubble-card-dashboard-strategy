@@ -3,14 +3,13 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.18.0";
+var VERSION = "0.19.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
-var DEFAULT_THEME_GROUPING = "state";
 var DEFAULT_ROOM_ORDER = "alphabetical";
-var DEFAULT_SUMMARY_COLUMNS = 4;
+var DEFAULT_SUMMARY_COLUMNS = 2;
 var DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
 var DEFAULT_BATTERY_CRITICAL_BELOW = 20;
 var ROOMS_POPUP_HASH = "#rooms";
@@ -267,7 +266,6 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
-      theme_grouping: DEFAULT_THEME_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config
     };
@@ -300,7 +298,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
-    const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
+    const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
     const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
     const showLightSummary = this._config.show_light_summary ?? true;
@@ -507,10 +505,11 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
         <div class="field">
           <label>Summary layout</label>
           <div class="radio-group">
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="1" ${summaryColumns === 1 ? "checked" : ""}> 1 column (full width)</label>
             <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
             <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
           </div>
-          <div class="hint">Choose how the summary buttons are arranged. The layout adjusts automatically when summaries are hidden.</div>
+          <div class="hint">Choose how the summary tiles are arranged. Fewer columns give each tile more width so long names stay readable. The layout adjusts automatically when summaries are hidden.</div>
         </div>
         <div class="field">
           <label for="show_light_summary">Light summary</label>
@@ -519,7 +518,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
         <div class="field">
           <label for="show_security_summary">Security summary</label>
           <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
-          <div class="hint">Shows motion, door/window, smoke and gas sensors plus locks and alarm panels, grouped into active and clear.</div>
+          <div class="hint">Shows locks, smoke &amp; leak sensors, doors &amp; windows (open/closed) and motion, plus any alarm panel, in logical groups.</div>
         </div>
         <div class="field">
           <label for="show_climate_summary">Climate summary</label>
@@ -542,15 +541,16 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       </div>
 
       <div class="section">
-        <div class="section-title">Theme views</div>
+        <div class="section-title">Summary grouping</div>
         <div class="field">
           <label for="theme_grouping">Group entities by</label>
           <select id="theme_grouping" data-field="theme_grouping">
+            ${themeGroupingOption("auto", "Automatic (per summary)", themeGrouping)}
             ${themeGroupingOption("area", "Room", themeGrouping)}
             ${themeGroupingOption("state", "On / off status", themeGrouping)}
             ${themeGroupingOption("none", "No grouping", themeGrouping)}
           </select>
-          <div class="hint">Controls how the Lights, Covers, Climate and Media theme views are grouped.</div>
+          <div class="hint">How the Lights and Climate summaries group their entities. "Automatic" uses the best fit per summary (lights by status, climate by room).</div>
         </div>
       </div>
     `;
@@ -621,6 +621,10 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     if (field === "room_order") {
       this.updateConfig(field, target.value);
       this.render();
+      return;
+    }
+    if (field === "theme_grouping") {
+      this.updateConfig(field, target.value === "auto" ? void 0 : target.value);
       return;
     }
     this.updateConfig(field, target.value);
@@ -700,6 +704,7 @@ var DESIGN = {
   // card_layout per summary-tile column count: wider layouts get more presence,
   // denser layouts stay compact so they never grow too large.
   summaryTileLayout: {
+    1: "large",
     2: "large",
     4: "normal"
   }
@@ -720,6 +725,16 @@ ${declarations}
 }
 function summaryTileLayout(columns) {
   return DESIGN.summaryTileLayout[columns] ?? "normal";
+}
+var COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
+function tileStyles(counterExpression) {
+  const base = bubbleThemeStyles();
+  if (!counterExpression) {
+    return base;
+  }
+  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
+  return `${base}
+${write}`;
 }
 
 // src/cards/common.ts
@@ -750,7 +765,10 @@ function bubblePopup(config) {
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
-    show_previous_button: config.showPreviousButton ?? true,
+    // The back arrow only makes sense when a previous pop-up was open. Our
+    // pop-ups open directly from the home view, so it would just duplicate the
+    // close button — off unless a caller explicitly opts in.
+    show_previous_button: config.showPreviousButton ?? false,
     close_by_clicking_outside: true,
     styles: bubbleThemeStyles(),
     cards: config.cards
@@ -1024,7 +1042,8 @@ var SUMMARIES = [
     icon: "mdi:lightbulb-group",
     configKey: "show_light_summary",
     domains: ["light"],
-    columns: 2
+    columns: 2,
+    defaultGrouping: "state"
   },
   {
     kind: "security",
@@ -1040,7 +1059,8 @@ var SUMMARIES = [
     icon: "mdi:thermostat",
     configKey: "show_climate_summary",
     domains: ["climate", "fan", "humidifier"],
-    columns: 2
+    columns: 2,
+    defaultGrouping: "area"
   },
   {
     kind: "battery",
@@ -1096,7 +1116,7 @@ function buildSummaryNavigation(summaries, columns, options) {
   };
 }
 function buildSummaryTile(summary, columns, options) {
-  const counter = summaryCounter(summary, options);
+  const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
   return {
     type: "custom:bubble-card",
     card_type: "button",
@@ -1104,49 +1124,49 @@ function buildSummaryTile(summary, columns, options) {
     name: summary.title,
     icon: summary.icon,
     card_layout: summaryTileLayout(columns),
-    styles: bubbleThemeStyles(),
+    // The counter value is written into the sub-button from the styles template
+    // (Bubble Card only evaluates templates there), so the sub-button just needs
+    // a placeholder that gets overwritten live.
+    styles: tileStyles(counter?.expression),
     button_action: {
       tap_action: {
         action: "navigate",
         navigation_path: `#${summary.id}`
       }
     },
-    ...counter ? { sub_button: [counter] } : {}
-  };
-}
-function summaryCounter(summary, options) {
-  const counter = COUNTER_TEMPLATES[summary.id]?.(options);
-  if (!counter) {
-    return void 0;
-  }
-  return {
-    name: counter.template,
-    icon: counter.icon,
-    show_name: true,
-    show_icon: true,
-    show_background: true,
-    tap_action: { action: "none" }
+    ...counter ? {
+      sub_button: [
+        {
+          name: "0",
+          icon: counter.icon,
+          show_name: true,
+          show_icon: true,
+          show_background: true,
+          tap_action: { action: "none" }
+        }
+      ]
+    } : {}
   };
 }
 var SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
-var COUNTER_TEMPLATES = {
+var COUNTER_EXPRESSIONS = {
   lights: () => ({
     icon: "mdi:lightbulb",
-    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length}"
+    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length"
   }),
   climate: () => ({
     icon: "mdi:fire",
-    template: "${Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length}"
+    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length"
   }),
   security: () => ({
     icon: "mdi:shield-alert",
-    template: `\${Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length}`
+    expression: `Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length`
   }),
   batteries: (options) => {
     const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
     return {
       icon: "mdi:battery-alert",
-      template: `\${Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length}`
+      expression: `Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length`
     };
   }
 };
@@ -1166,7 +1186,7 @@ function buildSummaryCards(summary, hass, options, sonosEntities) {
   if (summary.kind !== "domain") {
     return summary.kind === "security" ? buildSecurityCards(hass) : buildBatteryCards(options);
   }
-  const grouping = options.theme_grouping ?? DEFAULT_THEME_GROUPING;
+  const grouping = options.theme_grouping ?? summary.defaultGrouping;
   return grouping === "state" ? buildStateGroupedCards(summary) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
 }
 function buildStateGroupedCards(summary) {

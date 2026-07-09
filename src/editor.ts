@@ -7,7 +7,6 @@ import {
   DEFAULT_ROOM_ORDER,
   DEFAULT_SHOW_CAMERA_BUTTON,
   DEFAULT_SUMMARY_COLUMNS,
-  DEFAULT_THEME_GROUPING,
 } from "./constants";
 import type { HassArea, HomeAssistant, MediaPlayerCardType, RoomOrder, StrategyConfig, ThemeGrouping } from "./types";
 import { getMediaPlayerCardType } from "./cards/media-player";
@@ -51,7 +50,6 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
-      theme_grouping: DEFAULT_THEME_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config,
     };
@@ -91,7 +89,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
-    const themeGrouping = this._config.theme_grouping ?? DEFAULT_THEME_GROUPING;
+    const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
     const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
     const showLightSummary = this._config.show_light_summary ?? true;
@@ -299,10 +297,11 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
         <div class="field">
           <label>Summary layout</label>
           <div class="radio-group">
+            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="1" ${summaryColumns === 1 ? "checked" : ""}> 1 column (full width)</label>
             <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
             <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
           </div>
-          <div class="hint">Choose how the summary buttons are arranged. The layout adjusts automatically when summaries are hidden.</div>
+          <div class="hint">Choose how the summary tiles are arranged. Fewer columns give each tile more width so long names stay readable. The layout adjusts automatically when summaries are hidden.</div>
         </div>
         <div class="field">
           <label for="show_light_summary">Light summary</label>
@@ -311,7 +310,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
         <div class="field">
           <label for="show_security_summary">Security summary</label>
           <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
-          <div class="hint">Shows motion, door/window, smoke and gas sensors plus locks and alarm panels, grouped into active and clear.</div>
+          <div class="hint">Shows locks, smoke &amp; leak sensors, doors &amp; windows (open/closed) and motion, plus any alarm panel, in logical groups.</div>
         </div>
         <div class="field">
           <label for="show_climate_summary">Climate summary</label>
@@ -334,15 +333,16 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       </div>
 
       <div class="section">
-        <div class="section-title">Theme views</div>
+        <div class="section-title">Summary grouping</div>
         <div class="field">
           <label for="theme_grouping">Group entities by</label>
           <select id="theme_grouping" data-field="theme_grouping">
+            ${themeGroupingOption("auto", "Automatic (per summary)", themeGrouping)}
             ${themeGroupingOption("area", "Room", themeGrouping)}
             ${themeGroupingOption("state", "On / off status", themeGrouping)}
             ${themeGroupingOption("none", "No grouping", themeGrouping)}
           </select>
-          <div class="hint">Controls how the Lights, Covers, Climate and Media theme views are grouped.</div>
+          <div class="hint">How the Lights and Climate summaries group their entities. "Automatic" uses the best fit per summary (lights by status, climate by room).</div>
         </div>
       </div>
     `;
@@ -438,6 +438,12 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       return;
     }
 
+    if (field === "theme_grouping") {
+      // "auto" means no explicit grouping, so each summary uses its own default.
+      this.updateConfig(field, target.value === "auto" ? undefined : target.value);
+      return;
+    }
+
     this.updateConfig(field, target.value);
   }
 
@@ -510,7 +516,7 @@ function mediaPlayerCardOption(value: MediaPlayerCardType, label: string, select
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
-function themeGroupingOption(value: ThemeGrouping, label: string, selectedValue: ThemeGrouping): string {
+function themeGroupingOption(value: ThemeGrouping | "auto", label: string, selectedValue: string): string {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 

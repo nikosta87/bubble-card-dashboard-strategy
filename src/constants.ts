@@ -4,7 +4,7 @@ export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 export const VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 export const EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-export const VERSION = "0.18.0";
+export const VERSION = "0.19.0";
 
 export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_MEDIA_PLAYER_CARD: MediaPlayerCardType = "bubble-card";
@@ -12,7 +12,7 @@ export const DEFAULT_SHOW_CAMERA_BUTTON = true;
 export const DEFAULT_ENABLE_SONOS_GROUPING = true;
 export const DEFAULT_THEME_GROUPING: ThemeGrouping = "state";
 export const DEFAULT_ROOM_ORDER: RoomOrder = "alphabetical";
-export const DEFAULT_SUMMARY_COLUMNS: SummaryColumns = 4;
+export const DEFAULT_SUMMARY_COLUMNS: SummaryColumns = 2;
 export const DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
 export const DEFAULT_BATTERY_CRITICAL_BELOW = 20;
 export const ROOMS_POPUP_HASH = "#rooms";
