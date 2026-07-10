@@ -13,8 +13,13 @@ export const DESIGN = {
   // Bubble Card row heights for cards that benefit from more vertical space than
   // the default single row.
   cardRows: {
-    mediaPlayer: 2,
-    alarm: 2,
+    mediaPlayer: 4,
+  },
+  // card_layout for cards whose sub-buttons should sit on a second row instead of
+  // inline with the name.
+  cardLayout: {
+    alarm: "large-2-rows",
+    lock: "large-2-rows",
   },
   // card_layout per summary-tile column count: wider layouts get more presence,
   // denser layouts stay compact so they never grow too large.
