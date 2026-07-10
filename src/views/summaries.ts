@@ -1,5 +1,6 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
+  DEFAULT_BATTERY_LOW_BELOW,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
   DEFAULT_SHOW_ALARM_CONTROLS,
 } from "../constants";
@@ -524,7 +525,7 @@ function buildAlarmCard(entityId: string, showControls: boolean, t: Translator):
     card_type: "button",
     button_type: "state",
     entity: entityId,
-    rows: DESIGN.cardRows.alarm,
+    card_layout: DESIGN.cardLayout.alarm,
   };
 
   if (showControls) {
@@ -561,6 +562,7 @@ function buildLockCard(entityId: string, t: Translator): LovelaceCard {
     card_type: "button",
     button_type: "state",
     entity: entityId,
+    card_layout: DESIGN.cardLayout.lock,
     sub_button: [
       lockControl(t("unlock"), "mdi:lock-open-variant", "lock.unlock", entityId),
       lockControl(t("lock"), "mdi:lock", "lock.lock", entityId),
@@ -611,19 +613,29 @@ function hasBinarySensorClass(hass: HomeAssistant, deviceClasses: string[]): boo
 
 function buildBatteryCards(options: StrategyConfig, t: Translator): LovelaceCard[] {
   const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-  const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+  const critical = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+  const low = Math.max(options.battery_low_below ?? DEFAULT_BATTERY_LOW_BELOW, critical);
   const hideMobile = options.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
-  const exclude = hideMobile ? [{ integration: "mobile_app" }] : undefined;
+  const mobileExclude: AutoEntitiesFilter[] = hideMobile ? [{ integration: "mobile_app" }] : [];
   const sort = { method: "state", numeric: true };
 
   const batteryInclude = (state: string): AutoEntitiesFilter[] => [
     { domain: "sensor", attributes: { device_class: "battery" }, state, options: template },
   ];
 
+  // Three levels: critical (< critical), low (critical..low), ok (>= low). The low
+  // band is expressed as "< low" minus the critical entities via exclude.
   return [
     bubbleSeparator(t("critical"), "mdi:battery-alert"),
-    autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${threshold}`), exclude, sort }),
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${critical}`), exclude: mobileExclude, sort }),
+    bubbleSeparator(t("low"), "mdi:battery-low"),
+    autoEntitiesGrid({
+      columns: 2,
+      include: batteryInclude(`< ${low}`),
+      exclude: [...mobileExclude, { domain: "sensor", attributes: { device_class: "battery" }, state: `< ${critical}` }],
+      sort,
+    }),
     bubbleSeparator(t("ok"), "mdi:battery"),
-    autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${threshold}`), exclude, sort }),
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${low}`), exclude: mobileExclude, sort }),
   ];
 }

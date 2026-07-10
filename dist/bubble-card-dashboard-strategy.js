@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.20.0";
+var VERSION = "0.21.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
@@ -12,6 +12,7 @@ var DEFAULT_ROOM_ORDER = "alphabetical";
 var DEFAULT_SUMMARY_COLUMNS = 2;
 var DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
 var DEFAULT_BATTERY_CRITICAL_BELOW = 20;
+var DEFAULT_BATTERY_LOW_BELOW = 40;
 var DEFAULT_SHOW_ALARM_CONTROLS = true;
 var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
@@ -56,8 +57,13 @@ var DESIGN = {
   // Bubble Card row heights for cards that benefit from more vertical space than
   // the default single row.
   cardRows: {
-    mediaPlayer: 2,
-    alarm: 2
+    mediaPlayer: 4
+  },
+  // card_layout for cards whose sub-buttons should sit on a second row instead of
+  // inline with the name.
+  cardLayout: {
+    alarm: "large-2-rows",
+    lock: "large-2-rows"
   },
   // card_layout per summary-tile column count: wider layouts get more presence,
   // denser layouts stay compact so they never grow too large.
@@ -362,6 +368,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const showBatterySummary = this._config.show_battery_summary ?? true;
     const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
     const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    const batteryLow = this._config.battery_low_below ?? DEFAULT_BATTERY_LOW_BELOW;
     const showAlarmControls = this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
     this.innerHTML = `
       <style>
@@ -599,6 +606,11 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <input id="battery_critical_below" data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">
           <div class="hint">Batteries below this percentage appear in the Critical group.</div>
         </div>
+        <div class="field">
+          <label for="battery_low_below">Battery low below</label>
+          <input id="battery_low_below" data-field="battery_low_below" type="number" min="1" max="100" value="${batteryLow}">
+          <div class="hint">Batteries below this percentage (but at or above critical) appear in the Low group; the rest are OK.</div>
+        </div>
       </div>
 
       <div class="section">
@@ -667,7 +679,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }
-    if (field === "battery_critical_below") {
+    if (field === "battery_critical_below" || field === "battery_low_below") {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }
@@ -1030,6 +1042,7 @@ var STRINGS = {
     doorsWindowsClosed: "Doors & Windows \u2013 Closed",
     motionAndPresence: "Motion & Presence",
     critical: "Critical",
+    low: "Low",
     ok: "OK",
     armAway: "Away",
     armHome: "Home",
@@ -1059,6 +1072,7 @@ var STRINGS = {
     doorsWindowsClosed: "T\xFCren & Fenster \u2013 Geschlossen",
     motionAndPresence: "Bewegung & Anwesenheit",
     critical: "Kritisch",
+    low: "Niedrig",
     ok: "OK",
     armAway: "Abwesend",
     armHome: "Zuhause",
@@ -1418,7 +1432,7 @@ function buildAlarmCard(entityId, showControls, t) {
     card_type: "button",
     button_type: "state",
     entity: entityId,
-    rows: DESIGN.cardRows.alarm
+    card_layout: DESIGN.cardLayout.alarm
   };
   if (showControls) {
     card.sub_button = [
@@ -1450,6 +1464,7 @@ function buildLockCard(entityId, t) {
     card_type: "button",
     button_type: "state",
     entity: entityId,
+    card_layout: DESIGN.cardLayout.lock,
     sub_button: [
       lockControl(t("unlock"), "mdi:lock-open-variant", "lock.unlock", entityId),
       lockControl(t("lock"), "mdi:lock", "lock.lock", entityId)
@@ -1489,18 +1504,26 @@ function hasBinarySensorClass(hass, deviceClasses) {
 }
 function buildBatteryCards(options, t) {
   const template = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
-  const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+  const critical = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+  const low = Math.max(options.battery_low_below ?? DEFAULT_BATTERY_LOW_BELOW, critical);
   const hideMobile = options.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
-  const exclude = hideMobile ? [{ integration: "mobile_app" }] : void 0;
+  const mobileExclude = hideMobile ? [{ integration: "mobile_app" }] : [];
   const sort = { method: "state", numeric: true };
   const batteryInclude = (state) => [
     { domain: "sensor", attributes: { device_class: "battery" }, state, options: template }
   ];
   return [
     bubbleSeparator(t("critical"), "mdi:battery-alert"),
-    autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${threshold}`), exclude, sort }),
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`< ${critical}`), exclude: mobileExclude, sort }),
+    bubbleSeparator(t("low"), "mdi:battery-low"),
+    autoEntitiesGrid({
+      columns: 2,
+      include: batteryInclude(`< ${low}`),
+      exclude: [...mobileExclude, { domain: "sensor", attributes: { device_class: "battery" }, state: `< ${critical}` }],
+      sort
+    }),
     bubbleSeparator(t("ok"), "mdi:battery"),
-    autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${threshold}`), exclude, sort })
+    autoEntitiesGrid({ columns: 2, include: batteryInclude(`>= ${low}`), exclude: mobileExclude, sort })
   ];
 }
 

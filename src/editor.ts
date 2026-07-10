@@ -1,5 +1,6 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
+  DEFAULT_BATTERY_LOW_BELOW,
   DEFAULT_ENABLE_SONOS_GROUPING,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
   DEFAULT_MAX_ENTITIES_PER_AREA,
@@ -100,6 +101,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
     const showBatterySummary = this._config.show_battery_summary ?? true;
     const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
     const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
+    const batteryLow = this._config.battery_low_below ?? DEFAULT_BATTERY_LOW_BELOW;
     const showAlarmControls = this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
 
     this.innerHTML = `
@@ -338,6 +340,11 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           <input id="battery_critical_below" data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">
           <div class="hint">Batteries below this percentage appear in the Critical group.</div>
         </div>
+        <div class="field">
+          <label for="battery_low_below">Battery low below</label>
+          <input id="battery_low_below" data-field="battery_low_below" type="number" min="1" max="100" value="${batteryLow}">
+          <div class="hint">Batteries below this percentage (but at or above critical) appear in the Low group; the rest are OK.</div>
+        </div>
       </div>
 
       <div class="section">
@@ -425,7 +432,7 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       return;
     }
 
-    if (field === "battery_critical_below") {
+    if (field === "battery_critical_below" || field === "battery_low_below") {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }

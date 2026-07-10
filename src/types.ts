@@ -79,6 +79,7 @@ export type StrategyConfig = {
   show_battery_summary?: boolean;
   hide_mobile_app_batteries?: boolean;
   battery_critical_below?: number;
+  battery_low_below?: number;
   show_alarm_controls?: boolean;
 };
 
