@@ -100,21 +100,6 @@ export function getVisibleAreaEntities(
     .filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id)));
 }
 
-export function getCameraEntities(
-  entities: HassEntity[],
-  hass: HomeAssistant,
-  options: StrategyConfig,
-): HassEntity[] {
-  const ignoredEntities = new Set(options.ignored_entities ?? []);
-
-  return entities
-    .filter((entity) => getDomain(entity.entity_id) === "camera")
-    .filter((entity) => entity.entity_id in hass.states)
-    .filter((entity) => !entity.hidden_by && !entity.disabled_by)
-    .filter((entity) => !ignoredEntities.has(entity.entity_id))
-    .sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
-}
-
 export function findPrimaryEntityForArea(
   areaId: string,
   entities: HassEntity[],
@@ -205,19 +190,6 @@ function getMediaPlayerUpdatedAt(state: HassStateObject): number {
   }
 
   return 0;
-}
-
-export function getSonosMediaPlayers(entities: HassEntity[], options: StrategyConfig): string[] {
-  return [
-    ...new Set([
-      ...entities.filter(isSonosMediaPlayer).map((entity) => entity.entity_id),
-      ...(options.sonos_entities || []).filter((entityId) => getDomain(entityId) === "media_player"),
-    ]),
-  ].sort();
-}
-
-function isSonosMediaPlayer(entity: HassEntity): boolean {
-  return getDomain(entity.entity_id) === "media_player" && entity.platform === "sonos";
 }
 
 export function getUserInitial(hass: HomeAssistant): string {

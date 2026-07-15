@@ -17,20 +17,20 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
     {
       titleKey: "lights",
       icon: "mdi:lightbulb-group",
-      domains: ["light", "switch", "input_boolean"],
+      domains: ["light"],
       columns: 2,
     },
     {
       titleKey: "climate",
       icon: "mdi:thermostat",
       domains: ["climate", "fan", "humidifier"],
-      columns: 2,
+      columns: 1,
     },
     {
       titleKey: "media",
       icon: "mdi:speaker",
       domains: ["media_player"],
-      columns: 2,
+      columns: 1,
     },
     {
       titleKey: "covers",
@@ -47,7 +47,17 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
     {
       titleKey: "devices",
       icon: "mdi:power-plug",
-      domains: ["alarm_control_panel", "lock", "select", "input_select", "number", "input_number", "vacuum"],
+      domains: [
+        "alarm_control_panel",
+        "input_boolean",
+        "input_number",
+        "input_select",
+        "lock",
+        "number",
+        "select",
+        "switch",
+        "vacuum",
+      ],
       columns: 2,
     },
   ];
@@ -63,8 +73,7 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
  * matched `entity` into this template, so it must not carry one itself.
  */
 export function entityCardTemplate(domain: string, options: StrategyConfig = {}): LovelaceCard {
-  // auto-entities injects `entity`, so media players always use the entity-based
-  // Bubble Card here (mini-media-player/YAMP use different entity keys).
+  // auto-entities injects `entity`, so this template must not carry one itself.
   if (domain === "media_player") {
     return { type: "custom:bubble-card", card_type: "media-player" };
   }
@@ -84,11 +93,11 @@ export function entityCardTemplate(domain: string, options: StrategyConfig = {})
   return bubbleDomainCard(cardType, domain, undefined, options);
 }
 
-export function entityToCard(entity: HassEntity, options: StrategyConfig, sonosEntities: string[] = []): LovelaceCard {
+export function entityToCard(entity: HassEntity, options: StrategyConfig): LovelaceCard {
   const domain = getDomain(entity.entity_id);
 
   if (domain === "media_player") {
-    return mediaPlayerToCard(entity.entity_id, options, sonosEntities);
+    return mediaPlayerToCard(entity.entity_id, options);
   }
 
   return entityToBubbleCard(entity, options);
@@ -125,17 +134,25 @@ function bubbleDomainCard(
     ...(entityId && useAdvancedControls(options) && domain === "climate"
       ? {
           sub_button: {
-            main: [
+            main: [],
+            bottom: [
               {
-                ...(entityId ? { entity: entityId } : {}),
-                sub_button_type: "select",
-                select_attribute: "hvac_modes",
-                show_state: true,
-                fill_width: false,
+                buttons_layout: "inline",
+                justify_content: "start",
+                group: [
+                  {
+                    entity: entityId,
+                    sub_button_type: "select",
+                    select_attribute: "hvac_modes",
+                    show_state: true,
+                    fill_width: false,
+                  },
+                ],
               },
             ],
-            bottom: [],
           },
+          card_layout: "large",
+          rows: 2,
         }
       : {}),
   };

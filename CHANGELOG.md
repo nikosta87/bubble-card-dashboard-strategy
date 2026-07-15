@@ -2,6 +2,25 @@
 
 All notable changes to Bubble Card Dashboard Strategy are documented here.
 
+## [0.22.1] - 2026-07-15
+
+### Changed
+
+- Room-card status sub-buttons now use Bubble Card's dedicated bottom row so room names remain visible
+- Climate and media player cards now use the full room pop-up width
+- Room Lights sections now contain only `light.*` entities; switches and input booleans are shown under Devices
+- Room entity limits now prioritize Lights, Climate, and Media so large device lists cannot hide primary controls
+- Home summary tiles are replaced by one compact Bubble Card sub-button row
+- Media players now use only the Bubble Card implementation while the dashboard foundation is being built
+
+### Removed
+
+- Removed the untested camera navigation, settings, discovery, and generated pop-up
+
+### Fixed
+
+- Restored usable climate mode and Bubble Card volume controls in narrow room pop-ups
+
 ## [0.22.0] - 2026-07-15
 
 ### Added
@@ -27,3 +46,4 @@ All notable changes to Bubble Card Dashboard Strategy are documented here.
 - Fixed the Cameras navigation button opening a hash without a corresponding pop-up
 
 [0.22.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.0
+[0.22.1]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.1

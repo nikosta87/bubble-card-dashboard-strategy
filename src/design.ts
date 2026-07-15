@@ -10,24 +10,12 @@ export const DESIGN = {
   homeCard: {
     height: "190px",
   },
-  // Bubble Card row heights for cards that benefit from more vertical space than
-  // the default single row.
-  cardRows: {
-    mediaPlayer: 4,
-  },
   // card_layout for cards whose sub-buttons should sit on a second row instead of
   // inline with the name.
   cardLayout: {
     alarm: "large-2-rows",
     lock: "large-2-rows",
   },
-  // card_layout per summary-tile column count: wider layouts get more presence,
-  // denser layouts stay compact so they never grow too large.
-  summaryTileLayout: {
-    1: "large",
-    2: "large",
-    4: "normal",
-  } as Record<number, string>,
 };
 
 // CSS custom properties layered on top of the active Home Assistant theme. Cards
@@ -55,29 +43,4 @@ export function bubbleThemeStyles(): string {
     .join("\n");
 
   return `ha-card {\n${declarations}\n}`;
-}
-
-/** card_layout for a summary tile given the configured column count. */
-export function summaryTileLayout(columns: number): string {
-  return DESIGN.summaryTileLayout[columns] ?? "normal";
-}
-
-const COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
-
-/**
- * Bubble Card only evaluates `${...}` templates inside the `styles` block, so the
- * live counter is written into the tile's first sub-button from there. Combines
- * the shared theme styles with the counter template (which must come last, as
- * Bubble Card requires non-CSS templates at the end). Falls back to theme-only
- * styles when a tile has no counter.
- */
-export function tileStyles(counterExpression?: string): string {
-  const base = bubbleThemeStyles();
-
-  if (!counterExpression) {
-    return base;
-  }
-
-  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
-  return `${base}\n${write}`;
 }

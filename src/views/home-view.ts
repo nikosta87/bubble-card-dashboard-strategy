@@ -1,4 +1,4 @@
-import { DEFAULT_MAX_ENTITIES_PER_AREA, DEFAULT_SUMMARY_COLUMNS } from "../constants";
+import { DEFAULT_MAX_ENTITIES_PER_AREA } from "../constants";
 import type {
   HassArea,
   HassDevice,
@@ -8,7 +8,6 @@ import type {
   StrategyConfig,
 } from "../types";
 import { bubblePopup, bubbleSeparator, fixedHomeCard } from "../cards/common";
-import { buildCamerasPopup } from "../cards/cameras";
 import { entityToCard, groupRoomEntities } from "../cards/entity-cards";
 import { buildTopNavigation } from "../cards/navigation";
 import { buildSmartRoomCards } from "../cards/room-cards";
@@ -16,7 +15,6 @@ import { createTranslator, type Translator } from "../i18n";
 import {
   findFirstStateEntity,
   findStateEntities,
-  getCameraEntities,
   getAreaEntities,
   getRoomHash,
 } from "../utils/entities";
@@ -28,13 +26,10 @@ export function buildHomeView(
   devices: HassDevice[],
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[] = [],
 ) {
   const t = createTranslator(hass);
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
-  const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
-  const cameras = getCameraEntities(entities, hass, options);
 
   return {
     type: "sections",
@@ -43,7 +38,7 @@ export function buildHomeView(
       {
         type: "grid",
         cards: [
-          buildTopNavigation(hass, options, cameras.length > 0),
+          buildTopNavigation(hass, options),
           ...(overviewCards.length
             ? [
                 {
@@ -54,11 +49,10 @@ export function buildHomeView(
                 },
               ]
             : []),
-          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : []),
+          ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, t)] : []),
           ...buildRoomsSection(areas, entities, devices, hass, options, t),
-          ...(cameras.length ? [buildCamerasPopup(cameras, hass, options, t("cameras"))] : []),
-          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
-          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t),
+          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, t)),
+          ...buildSummaryPopups(activeSummaries, hass, options, t),
         ],
       },
     ],
@@ -128,14 +122,16 @@ function buildRoomPopup(
   devices: HassDevice[],
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[] = [],
   t: Translator,
 ): LovelaceCard {
-  const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(
-    0,
-    options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA,
-  );
-  const groups = groupRoomEntities(areaEntities);
+  const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options);
+  const maxEntities = options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
+  let remainingEntities = maxEntities;
+  const groups = groupRoomEntities(areaEntities).map((group) => {
+    const visibleEntities = group.entities.slice(0, remainingEntities);
+    remainingEntities -= visibleEntities.length;
+    return { ...group, entities: visibleEntities };
+  });
   const cards: LovelaceCard[] = [];
 
   groups.forEach((group) => {
@@ -148,7 +144,7 @@ function buildRoomPopup(
       type: "grid",
       square: false,
       columns: group.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options, sonosEntities)),
+      cards: group.entities.map((entity) => entityToCard(entity, options)),
     });
   });
 

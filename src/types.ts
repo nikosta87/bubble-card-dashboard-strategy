@@ -50,13 +50,9 @@ export type HomeAssistant = {
   };
 };
 
-export type MediaPlayerCardType = "bubble-card" | "mini-media-player" | "yamp";
-
 export type ThemeGrouping = "area" | "state" | "none";
 
 export type RoomOrder = "home_assistant" | "alphabetical" | "custom";
-
-export type SummaryColumns = 1 | 2 | 4;
 
 export type StrategyConfig = {
   title?: string;
@@ -64,17 +60,11 @@ export type StrategyConfig = {
   ignored_entities?: string[];
   ignored_domains?: string[];
   max_entities_per_area?: number;
-  media_player_card?: MediaPlayerCardType;
-  show_camera_button?: boolean;
-  camera_live_view?: boolean;
   enable_advanced_controls?: boolean;
-  enable_sonos_grouping?: boolean;
-  sonos_entities?: string[];
   theme_grouping?: ThemeGrouping;
   room_order?: RoomOrder;
   hidden_areas?: string[];
   custom_room_order?: string[];
-  summary_columns?: SummaryColumns;
   show_light_summary?: boolean;
   show_security_summary?: boolean;
   show_climate_summary?: boolean;

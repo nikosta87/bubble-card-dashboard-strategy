@@ -34,6 +34,7 @@ function smartRoomCard(
     ...(primaryEntity ? { entity: primaryEntity.entity_id } : {}),
     card_layout: "large",
     rows: 2,
+    show_name: true,
     show_state: false,
     button_action: {
       tap_action: {
@@ -44,8 +45,14 @@ function smartRoomCard(
     ...(statusEntities.length
       ? {
           sub_button: {
-            main: statusEntities.map(roomStatusSubButton),
-            bottom: [],
+            main: [],
+            bottom: [
+              {
+                buttons_layout: "inline",
+                justify_content: "start",
+                group: statusEntities.map(roomStatusSubButton),
+              },
+            ],
           },
         }
       : {}),

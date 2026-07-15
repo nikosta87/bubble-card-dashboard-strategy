@@ -7,7 +7,7 @@ import type {
   HomeAssistant,
   StrategyConfig,
 } from "./types";
-import { getActiveAreas, getSonosMediaPlayers, orderAreas } from "./utils/entities";
+import { getActiveAreas, orderAreas } from "./utils/entities";
 import { buildAreaView } from "./views/area-view";
 import { buildHomeView } from "./views/home-view";
 
@@ -38,7 +38,6 @@ export class BubbleDashboardStrategy extends HTMLElement {
             devices,
             entities,
             options: config,
-            sonosEntities: getSonosMediaPlayers(entities, config),
           },
         },
       ],
@@ -62,7 +61,6 @@ export class BubbleViewStrategy extends HTMLElement {
         config.devices as HassDevice[],
         hass,
         options,
-        config.sonosEntities as string[] | undefined,
       );
     }
 

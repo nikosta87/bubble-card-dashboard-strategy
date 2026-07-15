@@ -3,15 +3,10 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.22.0";
+var VERSION = "0.22.1";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
-var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
-var DEFAULT_SHOW_CAMERA_BUTTON = true;
-var DEFAULT_CAMERA_LIVE_VIEW = false;
 var DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
-var DEFAULT_ENABLE_SONOS_GROUPING = true;
 var DEFAULT_ROOM_ORDER = "alphabetical";
-var DEFAULT_SUMMARY_COLUMNS = 2;
 var DEFAULT_HIDE_MOBILE_APP_BATTERIES = true;
 var DEFAULT_BATTERY_CRITICAL_BELOW = 20;
 var DEFAULT_BATTERY_LOW_BELOW = 40;
@@ -48,135 +43,6 @@ var DEFAULT_IGNORED_DOMAINS = /* @__PURE__ */ new Set([
   "update",
   "zone"
 ]);
-
-// src/design.ts
-var DESIGN = {
-  popup: {
-    widthDesktop: "540px",
-    bgOpacity: "92",
-    bgBlur: "14"
-  },
-  homeCard: {
-    height: "190px"
-  },
-  // Bubble Card row heights for cards that benefit from more vertical space than
-  // the default single row.
-  cardRows: {
-    mediaPlayer: 4
-  },
-  // card_layout for cards whose sub-buttons should sit on a second row instead of
-  // inline with the name.
-  cardLayout: {
-    alarm: "large-2-rows",
-    lock: "large-2-rows"
-  },
-  // card_layout per summary-tile column count: wider layouts get more presence,
-  // denser layouts stay compact so they never grow too large.
-  summaryTileLayout: {
-    1: "large",
-    2: "large",
-    4: "normal"
-  }
-};
-var THEME_TOKENS = {
-  "--bcds-accent": "var(--primary-color)",
-  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
-};
-var BUBBLE_BINDINGS = {
-  "--bubble-accent-color": "var(--bcds-accent)",
-  "--bubble-border-radius": "var(--bcds-radius)"
-};
-function bubbleThemeStyles() {
-  const declarations = [...Object.entries(THEME_TOKENS), ...Object.entries(BUBBLE_BINDINGS)].map(([name, value]) => `  ${name}: ${value};`).join("\n");
-  return `ha-card {
-${declarations}
-}`;
-}
-function summaryTileLayout(columns) {
-  return DESIGN.summaryTileLayout[columns] ?? "normal";
-}
-var COUNTER_SELECTOR = "card.querySelector('.bubble-sub-button-1')";
-function tileStyles(counterExpression) {
-  const base = bubbleThemeStyles();
-  if (!counterExpression) {
-    return base;
-  }
-  const write = `\${${COUNTER_SELECTOR} && (${COUNTER_SELECTOR}.innerText = String(${counterExpression}))}`;
-  return `${base}
-${write}`;
-}
-
-// src/cards/media-player.ts
-function mediaPlayerToCard(entityId, options, sonosEntities = []) {
-  switch (getMediaPlayerCardType(options)) {
-    case "mini-media-player":
-      return {
-        type: "custom:mini-media-player",
-        entity: entityId,
-        artwork: "material",
-        info: "scroll",
-        idle_view: {
-          when_idle: true,
-          when_paused: true,
-          when_standby: true
-        },
-        ...shouldAddSonosGrouping(options, sonosEntities) ? {
-          speaker_group: {
-            platform: "sonos",
-            entities: sonosEntities,
-            sync_volume: true,
-            show_group_count: true
-          }
-        } : {}
-      };
-    case "yamp":
-      return {
-        type: "custom:yet-another-media-player",
-        entities: [entityId],
-        idle_screen: "search-recently-played",
-        artwork_object_fit: "cover"
-      };
-    case "bubble-card":
-    default:
-      return {
-        type: "custom:bubble-card",
-        card_type: "media-player",
-        entity: entityId,
-        rows: DESIGN.cardRows.mediaPlayer,
-        ...options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS ? {
-          sub_button: {
-            main: [
-              {
-                entity: entityId,
-                sub_button_type: "slider",
-                slider_value_position: "hidden",
-                show_icon: false,
-                fill_width: true
-              }
-            ],
-            bottom: []
-          }
-        } : {}
-      };
-  }
-}
-function getMediaPlayerCardType(options) {
-  const configValue = normalizeMediaPlayerCardType(options.media_player_card);
-  if (configValue) {
-    return configValue;
-  }
-  return DEFAULT_MEDIA_PLAYER_CARD;
-}
-function normalizeMediaPlayerCardType(value) {
-  const normalizedValue = value?.toLowerCase().trim().replace(/\s+/g, "-").replace(/^yet-another-media-player$/, "yamp");
-  if (normalizedValue === "bubble-card" || normalizedValue === "mini-media-player" || normalizedValue === "yamp") {
-    return normalizedValue;
-  }
-  return void 0;
-}
-function shouldAddSonosGrouping(options, sonosEntities) {
-  return (options.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING) && sonosEntities.length > 1;
-}
 
 // src/registry.ts
 var CACHE_TTL_MS = 3e4;
@@ -285,10 +151,6 @@ function getVisibleAreaEntities(areaId, entities, devices, hass, options) {
   const ignoredDomains = new Set(options.ignored_domains ?? []);
   return entities.filter((entity) => entityBelongsToArea(entity, areaId, devices)).filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id)));
 }
-function getCameraEntities(entities, hass, options) {
-  const ignoredEntities = new Set(options.ignored_entities ?? []);
-  return entities.filter((entity) => getDomain(entity.entity_id) === "camera").filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
-}
 function getFriendlyName(entity, hass) {
   const state = hass.states[entity.entity_id];
   const friendlyName = state?.attributes.friendly_name;
@@ -300,17 +162,6 @@ function findStateEntities(hass, domains) {
 function findFirstStateEntity(hass, domains) {
   return findStateEntities(hass, domains)[0];
 }
-function getSonosMediaPlayers(entities, options) {
-  return [
-    .../* @__PURE__ */ new Set([
-      ...entities.filter(isSonosMediaPlayer).map((entity) => entity.entity_id),
-      ...(options.sonos_entities || []).filter((entityId) => getDomain(entityId) === "media_player")
-    ])
-  ].sort();
-}
-function isSonosMediaPlayer(entity) {
-  return getDomain(entity.entity_id) === "media_player" && entity.platform === "sonos";
-}
 function getUserInitial(hass) {
   return (hass.user?.name || "?").trim().slice(0, 1).toUpperCase() || "?";
 }
@@ -320,10 +171,7 @@ function getRoomHash(area) {
 
 // src/editor.ts
 var BOOLEAN_FIELDS = /* @__PURE__ */ new Set([
-  "show_camera_button",
-  "camera_live_view",
   "enable_advanced_controls",
-  "enable_sonos_grouping",
   "show_light_summary",
   "show_security_summary",
   "show_climate_summary",
@@ -347,12 +195,8 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   }
   setConfig(config) {
     this._config = {
-      media_player_card: DEFAULT_MEDIA_PLAYER_CARD,
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
-      show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
-      camera_live_view: DEFAULT_CAMERA_LIVE_VIEW,
       enable_advanced_controls: DEFAULT_ENABLE_ADVANCED_CONTROLS,
-      enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config
     };
@@ -381,15 +225,10 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   }
   render() {
     this._rendered = true;
-    const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
-    const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
-    const cameraLiveView = this._config.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW;
     const enableAdvancedControls = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
-    const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
-    const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
     const showLightSummary = this._config.show_light_summary ?? true;
     const showSecuritySummary = this._config.show_security_summary ?? true;
     const showClimateSummary = this._config.show_climate_summary ?? true;
@@ -543,37 +382,9 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       <div class="section">
         <div class="section-title">Navigation</div>
         <div class="field">
-          <label for="show_camera_button">Camera button</label>
-          <input id="show_camera_button" data-field="show_camera_button" type="checkbox" ${showCameraButton ? "checked" : ""}>
-          <div class="hint">Shows or hides the camera icon in the top navigation.</div>
-        </div>
-        <div class="field">
-          <label for="camera_live_view">Live camera previews</label>
-          <input id="camera_live_view" data-field="camera_live_view" type="checkbox" ${cameraLiveView ? "checked" : ""}>
-          <div class="hint">Starts camera cards in live mode. Leave disabled for lower bandwidth and faster pop-ups.</div>
-        </div>
-        <div class="field">
           <label for="profile_image">Profile image</label>
           <input id="profile_image" data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">
           <div class="hint">Optional image URL for the round avatar. Leave empty to show the current user's initial.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Media</div>
-        <div class="field">
-          <label for="media_player_card">Media player card</label>
-          <select id="media_player_card" data-field="media_player_card">
-            ${mediaPlayerCardOption("bubble-card", "Bubble Card", mediaPlayerCard)}
-            ${mediaPlayerCardOption("mini-media-player", "Mini Media Player", mediaPlayerCard)}
-            ${mediaPlayerCardOption("yamp", "Yet Another Media Player", mediaPlayerCard)}
-          </select>
-          <div class="hint">Mini Media Player and YAMP must be installed separately before selecting them.</div>
-        </div>
-        <div class="field">
-          <label for="enable_sonos_grouping">Sonos grouping</label>
-          <input id="enable_sonos_grouping" data-field="enable_sonos_grouping" type="checkbox" ${enableSonosGrouping ? "checked" : ""}>
-          <div class="hint">Adds Mini Media Player speaker group controls for detected Sonos media players.</div>
         </div>
       </div>
 
@@ -607,15 +418,6 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
 
       <div class="section">
         <div class="section-title">Summaries</div>
-        <div class="field">
-          <label>Summary layout</label>
-          <div class="radio-group">
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="1" ${summaryColumns === 1 ? "checked" : ""}> 1 column (full width)</label>
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
-          </div>
-          <div class="hint">Choose how the summary tiles are arranged. Fewer columns give each tile more width so long names stay readable. The layout adjusts automatically when summaries are hidden.</div>
-        </div>
         <div class="field">
           <label for="show_light_summary">Light summary</label>
           <input id="show_light_summary" data-field="show_light_summary" type="checkbox" ${showLightSummary ? "checked" : ""}>
@@ -725,10 +527,6 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }
-    if (field === "summary_columns") {
-      this.updateConfig(field, Number(target.value));
-      return;
-    }
     if (BOOLEAN_FIELDS.has(field)) {
       this.updateConfig(field, target.checked);
       return;
@@ -796,14 +594,43 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     );
   }
 };
-function mediaPlayerCardOption(value, label, selectedValue) {
-  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
-}
 function themeGroupingOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 function roomOrderOption(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+}
+
+// src/design.ts
+var DESIGN = {
+  popup: {
+    widthDesktop: "540px",
+    bgOpacity: "92",
+    bgBlur: "14"
+  },
+  homeCard: {
+    height: "190px"
+  },
+  // card_layout for cards whose sub-buttons should sit on a second row instead of
+  // inline with the name.
+  cardLayout: {
+    alarm: "large-2-rows",
+    lock: "large-2-rows"
+  }
+};
+var THEME_TOKENS = {
+  "--bcds-accent": "var(--primary-color)",
+  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
+};
+var BUBBLE_BINDINGS = {
+  "--bubble-accent-color": "var(--bcds-accent)",
+  "--bubble-border-radius": "var(--bcds-radius)"
+};
+function bubbleThemeStyles() {
+  const declarations = [...Object.entries(THEME_TOKENS), ...Object.entries(BUBBLE_BINDINGS)].map(([name, value]) => `  ${name}: ${value};`).join("\n");
+  return `ha-card {
+${declarations}
+}`;
 }
 
 // src/cards/common.ts
@@ -874,26 +701,58 @@ function buildFooter(areas) {
   return footer;
 }
 
+// src/cards/media-player.ts
+function mediaPlayerToCard(entityId, options) {
+  return {
+    type: "custom:bubble-card",
+    card_type: "media-player",
+    entity: entityId,
+    ...options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS ? {
+      card_layout: "large",
+      rows: 2,
+      sub_button: {
+        main: [],
+        bottom: [
+          {
+            buttons_layout: "inline",
+            justify_content: "fill",
+            group: [
+              {
+                entity: entityId,
+                sub_button_type: "slider",
+                always_visible: true,
+                show_button_info: true,
+                slider_value_position: "right",
+                fill_width: true
+              }
+            ]
+          }
+        ]
+      }
+    } : {}
+  };
+}
+
 // src/cards/entity-cards.ts
 function groupRoomEntities(entities) {
   const groupDefinitions = [
     {
       titleKey: "lights",
       icon: "mdi:lightbulb-group",
-      domains: ["light", "switch", "input_boolean"],
+      domains: ["light"],
       columns: 2
     },
     {
       titleKey: "climate",
       icon: "mdi:thermostat",
       domains: ["climate", "fan", "humidifier"],
-      columns: 2
+      columns: 1
     },
     {
       titleKey: "media",
       icon: "mdi:speaker",
       domains: ["media_player"],
-      columns: 2
+      columns: 1
     },
     {
       titleKey: "covers",
@@ -910,7 +769,17 @@ function groupRoomEntities(entities) {
     {
       titleKey: "devices",
       icon: "mdi:power-plug",
-      domains: ["alarm_control_panel", "lock", "select", "input_select", "number", "input_number", "vacuum"],
+      domains: [
+        "alarm_control_panel",
+        "input_boolean",
+        "input_number",
+        "input_select",
+        "lock",
+        "number",
+        "select",
+        "switch",
+        "vacuum"
+      ],
       columns: 2
     }
   ];
@@ -935,10 +804,10 @@ function entityCardTemplate(domain, options = {}) {
   }
   return bubbleDomainCard(cardType, domain, void 0, options);
 }
-function entityToCard(entity, options, sonosEntities = []) {
+function entityToCard(entity, options) {
   const domain = getDomain(entity.entity_id);
   if (domain === "media_player") {
-    return mediaPlayerToCard(entity.entity_id, options, sonosEntities);
+    return mediaPlayerToCard(entity.entity_id, options);
   }
   return entityToBubbleCard(entity, options);
 }
@@ -964,17 +833,25 @@ function bubbleDomainCard(cardType, domain, entityId, options) {
     ...entityId ? { entity: entityId } : {},
     ...entityId && useAdvancedControls(options) && domain === "climate" ? {
       sub_button: {
-        main: [
+        main: [],
+        bottom: [
           {
-            ...entityId ? { entity: entityId } : {},
-            sub_button_type: "select",
-            select_attribute: "hvac_modes",
-            show_state: true,
-            fill_width: false
+            buttons_layout: "inline",
+            justify_content: "start",
+            group: [
+              {
+                entity: entityId,
+                sub_button_type: "select",
+                select_attribute: "hvac_modes",
+                show_state: true,
+                fill_width: false
+              }
+            ]
           }
-        ],
-        bottom: []
-      }
+        ]
+      },
+      card_layout: "large",
+      rows: 2
     } : {}
   };
 }
@@ -1009,43 +886,13 @@ function buildAreaView(area, entities, devices, hass, options) {
   };
 }
 
-// src/cards/cameras.ts
-function buildCamerasPopup(cameras, hass, options, name) {
-  return bubblePopup({
-    hash: "#cameras",
-    name,
-    icon: "mdi:video",
-    cards: [
-      {
-        type: "grid",
-        square: false,
-        columns: cameras.length === 1 ? 1 : 2,
-        cards: cameras.map((camera) => ({
-          type: "picture-entity",
-          entity: camera.entity_id,
-          name: getFriendlyName(camera, hass),
-          camera_view: options.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW ? "live" : "auto",
-          show_name: true,
-          show_state: false
-        }))
-      }
-    ]
-  });
-}
-
 // src/cards/navigation.ts
-function buildTopNavigation(hass, options, hasCameras) {
-  const showCameraButton = options.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
+function buildTopNavigation(hass, options) {
   return {
     type: "horizontal-stack",
     cards: [
       subButtonBar([profileSubButton(hass, options)], "flex-start"),
-      subButtonBar(
-        [
-          ...showCameraButton && hasCameras ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []
-        ],
-        "center"
-      ),
+      subButtonBar([], "center"),
       subButtonBar([navigationSubButton("", "mdi:cog", "/config/dashboard")], "flex-end")
     ]
   };
@@ -1115,6 +962,7 @@ function smartRoomCard(area, entities, devices, hass, options) {
     ...primaryEntity ? { entity: primaryEntity.entity_id } : {},
     card_layout: "large",
     rows: 2,
+    show_name: true,
     show_state: false,
     button_action: {
       tap_action: {
@@ -1124,8 +972,14 @@ function smartRoomCard(area, entities, devices, hass, options) {
     },
     ...statusEntities.length ? {
       sub_button: {
-        main: statusEntities.map(roomStatusSubButton),
-        bottom: []
+        main: [],
+        bottom: [
+          {
+            buttons_layout: "inline",
+            justify_content: "start",
+            group: statusEntities.map(roomStatusSubButton)
+          }
+        ]
       }
     } : {}
   };
@@ -1177,7 +1031,6 @@ var STRINGS = {
     scenes: "Scenes",
     devices: "Devices",
     rooms: "Rooms",
-    cameras: "Cameras",
     on: "On",
     off: "Off",
     allOn: "All on",
@@ -1208,7 +1061,6 @@ var STRINGS = {
     scenes: "Szenen",
     devices: "Ger\xE4te",
     rooms: "R\xE4ume",
-    cameras: "Kameras",
     on: "An",
     off: "Aus",
     allOn: "Alle an",
@@ -1356,74 +1208,39 @@ function isSecurityState(state) {
 function isBatteryState(state) {
   return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
 }
-function buildSummaryNavigation(summaries, columns, options, t) {
-  return {
-    type: "grid",
-    square: false,
-    columns,
-    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options, t))
-  };
-}
-function buildSummaryTile(summary, columns, options, t) {
-  const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
+function buildSummaryNavigation(summaries, t) {
   return {
     type: "custom:bubble-card",
-    card_type: "button",
-    button_type: "name",
-    name: t(summary.id),
-    icon: summary.icon,
-    card_layout: summaryTileLayout(columns),
-    // The counter value is written into the sub-button from the styles template
-    // (Bubble Card only evaluates templates there), so the sub-button just needs
-    // a placeholder that gets overwritten live.
-    styles: tileStyles(counter?.expression),
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: `#${summary.id}`
-      }
-    },
-    ...counter ? {
-      sub_button: [
+    card_type: "sub-buttons",
+    hide_main_background: true,
+    rows: 0.941,
+    sub_button: {
+      main: [],
+      bottom: [
         {
-          name: "0",
-          icon: counter.icon,
-          show_name: true,
-          show_icon: true,
-          show_background: true,
-          tap_action: { action: "none" }
+          name: "Summaries",
+          buttons_layout: "inline",
+          justify_content: "center",
+          group: summaries.map((summary) => ({
+            name: t(summary.id),
+            icon: summary.icon,
+            show_name: true,
+            fill_width: false,
+            tap_action: {
+              action: "navigate",
+              navigation_path: `#${summary.id}`
+            }
+          }))
         }
       ]
-    } : {}
+    }
   };
 }
-var SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
-var COUNTER_EXPRESSIONS = {
-  lights: () => ({
-    icon: "mdi:lightbulb",
-    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length"
-  }),
-  climate: () => ({
-    icon: "mdi:fire",
-    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length"
-  }),
-  security: () => ({
-    icon: "mdi:shield-alert",
-    expression: `Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length`
-  }),
-  batteries: (options) => {
-    const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
-    return {
-      icon: "mdi:battery-alert",
-      expression: `Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length`
-    };
-  }
-};
-function buildSummaryPopups(summaries, hass, options, sonosEntities = [], t) {
-  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities, t));
+function buildSummaryPopups(summaries, hass, options, t) {
+  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, t));
 }
-function buildSummaryPopup(summary, hass, options, sonosEntities, t) {
-  const cards = buildSummaryCards(summary, hass, options, sonosEntities, t);
+function buildSummaryPopup(summary, hass, options, t) {
+  const cards = buildSummaryCards(summary, hass, options, t);
   return bubblePopup({
     hash: `#${summary.id}`,
     name: t(summary.id),
@@ -1431,12 +1248,12 @@ function buildSummaryPopup(summary, hass, options, sonosEntities, t) {
     cards
   });
 }
-function buildSummaryCards(summary, hass, options, sonosEntities, t) {
+function buildSummaryCards(summary, hass, options, t) {
   if (summary.kind !== "domain") {
     return summary.kind === "security" ? buildSecurityCards(hass, options, t) : buildBatteryCards(options, t);
   }
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
-  return grouping === "state" ? buildStateGroupedCards(summary, options, t) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
+  return grouping === "state" ? buildStateGroupedCards(summary, options, t) : buildStaticGroupedCards(summary, grouping, hass, options);
 }
 function buildStateGroupedCards(summary, options, t) {
   const isLights = summary.domains.includes("light");
@@ -1499,7 +1316,7 @@ function buildStateIncludes(domains, bucket, options) {
     }))
   );
 }
-function buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities) {
+function buildStaticGroupedCards(summary, grouping, hass, options) {
   const sections = groupEntries(summary, grouping, hass);
   const cards = [];
   sections.forEach((section) => {
@@ -1510,7 +1327,7 @@ function buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities
       type: "grid",
       square: false,
       columns: summary.columns,
-      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities))
+      cards: section.entities.map((entity) => entityToCard(entity, options))
     });
   });
   return cards;
@@ -1678,12 +1495,10 @@ function buildBatteryCards(options, t) {
 }
 
 // src/views/home-view.ts
-function buildHomeView(areas, entities, devices, hass, options, sonosEntities = []) {
+function buildHomeView(areas, entities, devices, hass, options) {
   const t = createTranslator(hass);
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
-  const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
-  const cameras = getCameraEntities(entities, hass, options);
   return {
     type: "sections",
     max_columns: 2,
@@ -1691,7 +1506,7 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
       {
         type: "grid",
         cards: [
-          buildTopNavigation(hass, options, cameras.length > 0),
+          buildTopNavigation(hass, options),
           ...overviewCards.length ? [
             {
               type: "grid",
@@ -1700,11 +1515,10 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
               cards: overviewCards
             }
           ] : [],
-          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : [],
+          ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, t)] : [],
           ...buildRoomsSection(areas, entities, devices, hass, options, t),
-          ...cameras.length ? [buildCamerasPopup(cameras, hass, options, t("cameras"))] : [],
-          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
-          ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t)
+          ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, t)),
+          ...buildSummaryPopups(activeSummaries, hass, options, t)
         ]
       }
     ]
@@ -1755,12 +1569,15 @@ function buildRoomsSection(areas, entities, devices, hass, options, t) {
     }
   ];
 }
-function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = [], t) {
-  const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(
-    0,
-    options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA
-  );
-  const groups = groupRoomEntities(areaEntities);
+function buildRoomPopup(area, entities, devices, hass, options, t) {
+  const areaEntities = getAreaEntities(area.area_id, entities, devices, hass, options);
+  const maxEntities = options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
+  let remainingEntities = maxEntities;
+  const groups = groupRoomEntities(areaEntities).map((group) => {
+    const visibleEntities = group.entities.slice(0, remainingEntities);
+    remainingEntities -= visibleEntities.length;
+    return { ...group, entities: visibleEntities };
+  });
   const cards = [];
   groups.forEach((group) => {
     if (!group.entities.length) {
@@ -1771,7 +1588,7 @@ function buildRoomPopup(area, entities, devices, hass, options, sonosEntities = 
       type: "grid",
       square: false,
       columns: group.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options, sonosEntities))
+      cards: group.entities.map((entity) => entityToCard(entity, options))
     });
   });
   if (!cards.length) {
@@ -1812,8 +1629,7 @@ var BubbleDashboardStrategy = class extends HTMLElement {
             areas: activeAreas,
             devices,
             entities,
-            options: config,
-            sonosEntities: getSonosMediaPlayers(entities, config)
+            options: config
           }
         }
       ]
@@ -1833,8 +1649,7 @@ var BubbleViewStrategy = class extends HTMLElement {
         config.entities,
         config.devices,
         hass,
-        options,
-        config.sonosEntities
+        options
       );
     }
     return buildAreaView(

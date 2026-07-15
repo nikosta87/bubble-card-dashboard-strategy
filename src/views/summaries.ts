@@ -16,7 +16,7 @@ import type {
 import { autoEntitiesGrid, type AutoEntitiesFilter } from "../cards/auto-entities";
 import { bubblePopup, bubbleSeparator } from "../cards/common";
 import { entityCardTemplate, entityToCard } from "../cards/entity-cards";
-import { DESIGN, summaryTileLayout, tileStyles } from "../design";
+import { DESIGN } from "../design";
 import { type TranslationKey, type Translator } from "../i18n";
 import { getAreaEntities, getDomain, getFriendlyName } from "../utils/entities";
 
@@ -197,106 +197,56 @@ function isBatteryState(state: HomeAssistant["states"][string]): boolean {
   return getDomain(state.entity_id) === "sensor" && state.attributes.device_class === "battery";
 }
 
-/** Builds the grid of informative summary tiles on the home view. */
+/** Builds one compact Bubble Card chip row linking to the summary pop-ups. */
 export function buildSummaryNavigation(
   summaries: ResolvedSummary[],
-  columns: number,
-  options: StrategyConfig,
   t: Translator,
 ): LovelaceCard {
   return {
-    type: "grid",
-    square: false,
-    columns,
-    cards: summaries.map((summary) => buildSummaryTile(summary, columns, options, t)),
-  };
-}
-
-function buildSummaryTile(summary: ResolvedSummary, columns: number, options: StrategyConfig, t: Translator): LovelaceCard {
-  const counter = COUNTER_EXPRESSIONS[summary.id]?.(options);
-
-  return {
     type: "custom:bubble-card",
-    card_type: "button",
-    button_type: "name",
-    name: t(summary.id as TranslationKey),
-    icon: summary.icon,
-    card_layout: summaryTileLayout(columns),
-    // The counter value is written into the sub-button from the styles template
-    // (Bubble Card only evaluates templates there), so the sub-button just needs
-    // a placeholder that gets overwritten live.
-    styles: tileStyles(counter?.expression),
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: `#${summary.id}`,
-      },
-    },
-    ...(counter
-      ? {
-          sub_button: [
-            {
-              name: "0",
-              icon: counter.icon,
-              show_name: true,
-              show_icon: true,
-              show_background: true,
-              tap_action: { action: "none" },
+    card_type: "sub-buttons",
+    hide_main_background: true,
+    rows: 0.941,
+    sub_button: {
+      main: [],
+      bottom: [
+        {
+          name: "Summaries",
+          buttons_layout: "inline",
+          justify_content: "center",
+          group: summaries.map((summary) => ({
+            name: t(summary.id as TranslationKey),
+            icon: summary.icon,
+            show_name: true,
+            fill_width: false,
+            tap_action: {
+              action: "navigate",
+              navigation_path: `#${summary.id}`,
             },
-          ],
-        }
-      : {}),
+          })),
+        },
+      ],
+    },
   };
 }
-
-const SECURITY_CLASSES_JS = SECURITY_DEVICE_CLASSES.map((deviceClass) => `'${deviceClass}'`).join(",");
-
-// A single live-count expression per tile, only where a count is meaningful, so
-// the tiles stay informative without being overloaded. Each returns a raw JS
-// expression evaluated inside the Bubble Card styles template (where `hass` is
-// available).
-const COUNTER_EXPRESSIONS: Record<string, (options: StrategyConfig) => { icon: string; expression: string }> = {
-  lights: () => ({
-    icon: "mdi:lightbulb",
-    expression: "Object.values(hass.states).filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length",
-  }),
-  climate: () => ({
-    icon: "mdi:fire",
-    expression:
-      "Object.values(hass.states).filter(s => s.entity_id.startsWith('climate.') && !['off','unavailable','unknown'].includes(s.state)).length",
-  }),
-  security: () => ({
-    icon: "mdi:shield-alert",
-    expression: `Object.values(hass.states).filter(s => (s.entity_id.startsWith('binary_sensor.') && s.state === 'on' && [${SECURITY_CLASSES_JS}].includes(s.attributes.device_class)) || (s.entity_id.startsWith('lock.') && s.state === 'unlocked') || (s.entity_id.startsWith('alarm_control_panel.') && String(s.state).startsWith('armed'))).length`,
-  }),
-  batteries: (options) => {
-    const threshold = options.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
-    return {
-      icon: "mdi:battery-alert",
-      expression: `Object.values(hass.states).filter(s => s.entity_id.startsWith('sensor.') && s.attributes.device_class === 'battery' && Number(s.state) < ${threshold}).length`,
-    };
-  },
-};
 
 /** Builds one pop-up per active summary. */
 export function buildSummaryPopups(
   summaries: ResolvedSummary[],
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[] = [],
   t: Translator,
 ): LovelaceCard[] {
-  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, sonosEntities, t));
+  return summaries.map((summary) => buildSummaryPopup(summary, hass, options, t));
 }
 
 function buildSummaryPopup(
   summary: ResolvedSummary,
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[],
   t: Translator,
 ): LovelaceCard {
-  const cards = buildSummaryCards(summary, hass, options, sonosEntities, t);
+  const cards = buildSummaryCards(summary, hass, options, t);
 
   return bubblePopup({
     hash: `#${summary.id}`,
@@ -310,7 +260,6 @@ function buildSummaryCards(
   summary: ResolvedSummary,
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[],
   t: Translator,
 ): LovelaceCard[] {
   if (summary.kind !== "domain") {
@@ -318,11 +267,10 @@ function buildSummaryCards(
   }
 
   // The global theme_grouping option, when set, overrides the per-summary
-  // default (lights: status, climate: room).
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
   return grouping === "state"
     ? buildStateGroupedCards(summary, options, t)
-    : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
+    : buildStaticGroupedCards(summary, grouping, hass, options);
 }
 
 // --- Lights / Climate ---------------------------------------------------------
@@ -409,7 +357,6 @@ function buildStaticGroupedCards(
   grouping: ThemeGrouping,
   hass: HomeAssistant,
   options: StrategyConfig,
-  sonosEntities: string[],
 ): LovelaceCard[] {
   const sections = groupEntries(summary, grouping, hass);
   const cards: LovelaceCard[] = [];
@@ -422,7 +369,7 @@ function buildStaticGroupedCards(
       type: "grid",
       square: false,
       columns: summary.columns,
-      cards: section.entities.map((entity) => entityToCard(entity, options, sonosEntities)),
+      cards: section.entities.map((entity) => entityToCard(entity, options)),
     });
   });
 

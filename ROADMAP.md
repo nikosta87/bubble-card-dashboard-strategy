@@ -4,11 +4,11 @@ The 14 feature goals are grouped into five testable packages. Each package recei
 
 ## Package 1 - Bubble-native control foundation
 
-Status: Included in v0.22.0
+Status: Included in v0.22.0, refined in v0.22.1
 
 - Smart room cards on the Home screen
 - Bubble Card sliders and select sub-buttons
-- Generated camera pop-up
+- Full-width climate and media controls in room pop-ups
 - Bubble Card 3.2 adaptive and performance-oriented pop-ups
 
 Related feature goals: 1, 4, 8, and 9.

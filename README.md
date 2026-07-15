@@ -12,7 +12,6 @@ This project is built for people who want a clean Bubble Card dashboard without 
 - Smart room cards with automatically selected temperature, presence, contact, and light status controls
 - Room overview pop-up
 - One generated pop-up per area
-- Generated camera pop-up with optional live previews
 - Bubble Card sliders and select sub-buttons for compatible entities
 - Bubble Card controls for lights, switches, covers, climate entities, media players, selects, scripts, scenes, and more
 - Optional entity and domain filtering
@@ -145,11 +144,7 @@ strategy:
   type: custom:bubble-card-dashboard
   title: My Home
   profile_image: /local/profile.jpg
-  show_camera_button: true
-  camera_live_view: false
   enable_advanced_controls: true
-  media_player_card: bubble-card
-  enable_sonos_grouping: true
   max_entities_per_area: 24
   ignored_domains:
     - sensor
@@ -163,12 +158,7 @@ strategy:
 | --- | --- | --- | --- |
 | `title` | string | Home Assistant location name | Dashboard title |
 | `profile_image` | string | none | Optional image URL for the round avatar in the top navigation |
-| `show_camera_button` | boolean | `true` | Shows the camera icon when at least one usable camera is available |
-| `camera_live_view` | boolean | `false` | Starts camera cards in live mode instead of bandwidth-saving automatic previews |
 | `enable_advanced_controls` | boolean | `true` | Enables compatible Bubble sliders and select sub-buttons |
-| `media_player_card` | string | `bubble-card` | Media player card type. Use `bubble-card`, `mini-media-player`, or `yamp` |
-| `enable_sonos_grouping` | boolean | `true` | Adds Mini Media Player speaker group controls for detected Sonos media players |
-| `sonos_entities` | string[] | auto-detected | Optional list of Sonos `media_player` entities when auto-detection is not enough |
 | `max_entities_per_area` | number | `24` | Maximum number of generated entity cards per area |
 | `ignored_domains` | string[] | `[]` | Domains to exclude from generated room views |
 | `ignored_entities` | string[] | `[]` | Specific entities to exclude |
@@ -181,11 +171,7 @@ Open the dashboard, click the edit pencil, then open the dashboard edit dialog. 
 
 - dashboard title
 - profile image URL
-- camera button visibility
-- live camera previews
 - advanced Bubble controls
-- media player card type
-- Sonos grouping
 - maximum generated entities per room
 
 ### Smart Room Cards
@@ -199,6 +185,8 @@ Each visible Home Assistant area is rendered as a smart Bubble Card on the Home 
 
 Detection uses Home Assistant area assignments and device classes, so entities do not need special names. Room visibility and ordering continue to use the existing room settings in the graphical editor.
 
+Room pop-ups classify controls by their Home Assistant domain. The Lights section contains only `light.*` entities. `switch.*` and `input_boolean.*` entities appear under Devices, matching the separation used by Simon42 Dashboard Strategy. When a room reaches its configured entity limit, Lights, Climate, and Media are prioritized before general devices.
+
 ### Advanced Bubble Controls
 
 With `enable_advanced_controls` enabled, compatible entities use richer Bubble Card controls:
@@ -210,55 +198,15 @@ With `enable_advanced_controls` enabled, compatible entities use richer Bubble C
 
 Disable the option to use simpler switch-style controls.
 
-### Cameras
-
-When usable camera entities exist, the Cameras button opens a generated Bubble Card pop-up. Camera cards use `camera_view: auto` by default for faster loading and lower bandwidth. Enable **Live camera previews** in the strategy editor only for devices that can handle continuous streams.
-
 ### Media Player Cards
 
 The Home overview media card automatically chooses the best media player to show. It prefers currently playing players, then paused players, then the most recently updated media player with media metadata or artwork.
 
-By default, media players are generated as Bubble Card media-player cards:
+Media players are generated exclusively as Bubble Card media-player cards while the dashboard foundation is being built. With advanced controls enabled, the card uses a dedicated bottom row for an always-visible volume slider.
 
-```yaml
-strategy:
-  type: custom:bubble-card-dashboard
-  media_player_card: bubble-card
-```
+### Summary Navigation
 
-You can use Mini Media Player instead:
-
-```yaml
-strategy:
-  type: custom:bubble-card-dashboard
-  media_player_card: mini-media-player
-```
-
-This requires [Mini Media Player](https://github.com/kalkih/mini-media-player) to be installed separately.
-
-When Mini Media Player is selected, the generated card uses `artwork: material`. If Sonos media players are detected, the strategy also adds Mini Media Player's `speaker_group` config:
-
-```yaml
-speaker_group:
-  platform: sonos
-  entities:
-    - media_player.living_room
-    - media_player.kitchen
-  sync_volume: true
-  show_group_count: true
-```
-
-You can disable this in the dashboard editor with **Sonos grouping**.
-
-You can also use Yet Another Media Player:
-
-```yaml
-strategy:
-  type: custom:bubble-card-dashboard
-  media_player_card: yamp
-```
-
-This requires [Yet Another Media Player](https://github.com/jianyu-li/yet-another-media-player) to be installed separately. The generated YAMP config uses its recently-played idle screen.
+The Home screen displays enabled summaries as one compact Bubble Card `sub-buttons` row. Each chip opens the corresponding generated pop-up for Lights, Security, Climate, or Batteries. Summary visibility remains configurable in the dashboard editor.
 
 ## How It Works
 
@@ -270,7 +218,6 @@ The generated dashboard uses Bubble Card pop-ups:
 
 - `#rooms` opens the room overview
 - `#room-{room-name}` opens a generated room detail pop-up
-- `#cameras` opens the generated camera grid when cameras are available
 - generated pop-ups use Bubble Card 3.2 adaptive dialogs and performance mode
 
 ## Development

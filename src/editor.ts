@@ -1,28 +1,19 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
   DEFAULT_BATTERY_LOW_BELOW,
-  DEFAULT_CAMERA_LIVE_VIEW,
   DEFAULT_ENABLE_ADVANCED_CONTROLS,
-  DEFAULT_ENABLE_SONOS_GROUPING,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
   DEFAULT_MAX_ENTITIES_PER_AREA,
-  DEFAULT_MEDIA_PLAYER_CARD,
   DEFAULT_ROOM_ORDER,
   DEFAULT_SHOW_ALARM_CONTROLS,
-  DEFAULT_SHOW_CAMERA_BUTTON,
-  DEFAULT_SUMMARY_COLUMNS,
 } from "./constants";
-import type { HassArea, HomeAssistant, MediaPlayerCardType, RoomOrder, StrategyConfig, ThemeGrouping } from "./types";
-import { getMediaPlayerCardType } from "./cards/media-player";
+import type { HassArea, HomeAssistant, RoomOrder, StrategyConfig, ThemeGrouping } from "./types";
 import { getRegistries } from "./registry";
 import { getActiveAreas, sortAreas } from "./utils/entities";
 import { clampNumber, escapeHtml } from "./utils/format";
 
 const BOOLEAN_FIELDS = new Set([
-  "show_camera_button",
-  "camera_live_view",
   "enable_advanced_controls",
-  "enable_sonos_grouping",
   "show_light_summary",
   "show_security_summary",
   "show_climate_summary",
@@ -53,12 +44,8 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
 
   setConfig(config: StrategyConfig) {
     this._config = {
-      media_player_card: DEFAULT_MEDIA_PLAYER_CARD,
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
-      show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
-      camera_live_view: DEFAULT_CAMERA_LIVE_VIEW,
       enable_advanced_controls: DEFAULT_ENABLE_ADVANCED_CONTROLS,
-      enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config,
     };
@@ -94,15 +81,10 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
 
   private render() {
     this._rendered = true;
-    const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
-    const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
-    const cameraLiveView = this._config.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW;
     const enableAdvancedControls = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
-    const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
-    const summaryColumns = this._config.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
     const showLightSummary = this._config.show_light_summary ?? true;
     const showSecuritySummary = this._config.show_security_summary ?? true;
     const showClimateSummary = this._config.show_climate_summary ?? true;
@@ -257,37 +239,9 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       <div class="section">
         <div class="section-title">Navigation</div>
         <div class="field">
-          <label for="show_camera_button">Camera button</label>
-          <input id="show_camera_button" data-field="show_camera_button" type="checkbox" ${showCameraButton ? "checked" : ""}>
-          <div class="hint">Shows or hides the camera icon in the top navigation.</div>
-        </div>
-        <div class="field">
-          <label for="camera_live_view">Live camera previews</label>
-          <input id="camera_live_view" data-field="camera_live_view" type="checkbox" ${cameraLiveView ? "checked" : ""}>
-          <div class="hint">Starts camera cards in live mode. Leave disabled for lower bandwidth and faster pop-ups.</div>
-        </div>
-        <div class="field">
           <label for="profile_image">Profile image</label>
           <input id="profile_image" data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">
           <div class="hint">Optional image URL for the round avatar. Leave empty to show the current user's initial.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Media</div>
-        <div class="field">
-          <label for="media_player_card">Media player card</label>
-          <select id="media_player_card" data-field="media_player_card">
-            ${mediaPlayerCardOption("bubble-card", "Bubble Card", mediaPlayerCard)}
-            ${mediaPlayerCardOption("mini-media-player", "Mini Media Player", mediaPlayerCard)}
-            ${mediaPlayerCardOption("yamp", "Yet Another Media Player", mediaPlayerCard)}
-          </select>
-          <div class="hint">Mini Media Player and YAMP must be installed separately before selecting them.</div>
-        </div>
-        <div class="field">
-          <label for="enable_sonos_grouping">Sonos grouping</label>
-          <input id="enable_sonos_grouping" data-field="enable_sonos_grouping" type="checkbox" ${enableSonosGrouping ? "checked" : ""}>
-          <div class="hint">Adds Mini Media Player speaker group controls for detected Sonos media players.</div>
         </div>
       </div>
 
@@ -321,15 +275,6 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
 
       <div class="section">
         <div class="section-title">Summaries</div>
-        <div class="field">
-          <label>Summary layout</label>
-          <div class="radio-group">
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="1" ${summaryColumns === 1 ? "checked" : ""}> 1 column (full width)</label>
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="2" ${summaryColumns === 2 ? "checked" : ""}> 2 columns (2x2 grid)</label>
-            <label><input type="radio" name="summary_columns" data-field="summary_columns" value="4" ${summaryColumns === 4 ? "checked" : ""}> 4 columns (1x4 row)</label>
-          </div>
-          <div class="hint">Choose how the summary tiles are arranged. Fewer columns give each tile more width so long names stay readable. The layout adjusts automatically when summaries are hidden.</div>
-        </div>
         <div class="field">
           <label for="show_light_summary">Light summary</label>
           <input id="show_light_summary" data-field="show_light_summary" type="checkbox" ${showLightSummary ? "checked" : ""}>
@@ -459,11 +404,6 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       return;
     }
 
-    if (field === "summary_columns") {
-      this.updateConfig(field, Number(target.value));
-      return;
-    }
-
     if (BOOLEAN_FIELDS.has(field)) {
       this.updateConfig(field, (target as HTMLInputElement).checked);
       return;
@@ -547,10 +487,6 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       }),
     );
   }
-}
-
-function mediaPlayerCardOption(value: MediaPlayerCardType, label: string, selectedValue: MediaPlayerCardType): string {
-  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
 }
 
 function themeGroupingOption(value: ThemeGrouping | "auto", label: string, selectedValue: string): string {
