@@ -9,8 +9,11 @@ This project is built for people who want a clean Bubble Card dashboard without 
 - Automatic dashboard generation from Home Assistant areas
 - One app-like Home view
 - Top navigation bar using Bubble Card sub-buttons
+- Smart room cards with automatically selected temperature, presence, contact, and light status controls
 - Room overview pop-up
 - One generated pop-up per area
+- Generated camera pop-up with optional live previews
+- Bubble Card sliders and select sub-buttons for compatible entities
 - Bubble Card controls for lights, switches, covers, climate entities, media players, selects, scripts, scenes, and more
 - Optional entity and domain filtering
 - HACS custom repository support
@@ -18,7 +21,7 @@ This project is built for people who want a clean Bubble Card dashboard without 
 ## Requirements
 
 - Home Assistant with dashboard strategy support
-- [Bubble Card](https://github.com/Clooos/Bubble-Card) installed
+- [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.2.0 or newer installed
 - [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) installed for the status-grouped summaries (Lights, Security, Batteries)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod) installed if you want all Home overview cards to use the same fixed height
 - Areas configured in Home Assistant
@@ -143,6 +146,8 @@ strategy:
   title: My Home
   profile_image: /local/profile.jpg
   show_camera_button: true
+  camera_live_view: false
+  enable_advanced_controls: true
   media_player_card: bubble-card
   enable_sonos_grouping: true
   max_entities_per_area: 24
@@ -158,7 +163,9 @@ strategy:
 | --- | --- | --- | --- |
 | `title` | string | Home Assistant location name | Dashboard title |
 | `profile_image` | string | none | Optional image URL for the round avatar in the top navigation |
-| `show_camera_button` | boolean | `true` | Shows or hides the camera icon in the top navigation |
+| `show_camera_button` | boolean | `true` | Shows the camera icon when at least one usable camera is available |
+| `camera_live_view` | boolean | `false` | Starts camera cards in live mode instead of bandwidth-saving automatic previews |
+| `enable_advanced_controls` | boolean | `true` | Enables compatible Bubble sliders and select sub-buttons |
 | `media_player_card` | string | `bubble-card` | Media player card type. Use `bubble-card`, `mini-media-player`, or `yamp` |
 | `enable_sonos_grouping` | boolean | `true` | Adds Mini Media Player speaker group controls for detected Sonos media players |
 | `sonos_entities` | string[] | auto-detected | Optional list of Sonos `media_player` entities when auto-detection is not enough |
@@ -175,8 +182,37 @@ Open the dashboard, click the edit pencil, then open the dashboard edit dialog. 
 - dashboard title
 - profile image URL
 - camera button visibility
+- live camera previews
+- advanced Bubble controls
 - media player card type
+- Sonos grouping
 - maximum generated entities per room
+
+### Smart Room Cards
+
+Each visible Home Assistant area is rendered as a smart Bubble Card on the Home screen. Tapping the card opens its room pop-up. When matching entities are available, the card automatically adds live sub-buttons for:
+
+- temperature
+- motion, occupancy, or presence
+- door or window contacts
+- a room light
+
+Detection uses Home Assistant area assignments and device classes, so entities do not need special names. Room visibility and ordering continue to use the existing room settings in the graphical editor.
+
+### Advanced Bubble Controls
+
+With `enable_advanced_controls` enabled, compatible entities use richer Bubble Card controls:
+
+- sliders for lights, fans, `number`, and `input_number` entities
+- an HVAC mode select sub-button for climate entities
+- a volume slider sub-button for Bubble Card media players
+- Bubble Card select cards for `select` and `input_select` entities
+
+Disable the option to use simpler switch-style controls.
+
+### Cameras
+
+When usable camera entities exist, the Cameras button opens a generated Bubble Card pop-up. Camera cards use `camera_view: auto` by default for faster loading and lower bandwidth. Enable **Live camera previews** in the strategy editor only for devices that can handle continuous streams.
 
 ### Media Player Cards
 
@@ -234,9 +270,8 @@ The generated dashboard uses Bubble Card pop-ups:
 
 - `#rooms` opens the room overview
 - `#room-{room-name}` opens a generated room detail pop-up
-- room pop-ups contain a **Back to rooms** button
-- the footer's first button opens `#rooms`; it does not navigate to `/lovelace/home`
-- the horizontal button stack is placed as the last card in the view, as required by Bubble Card
+- `#cameras` opens the generated camera grid when cameras are available
+- generated pop-ups use Bubble Card 3.2 adaptive dialogs and performance mode
 
 ## Development
 
@@ -260,12 +295,7 @@ dist/bubble-card-dashboard-strategy.js
 
 ## Roadmap
 
-- Graphical strategy editor
-- Room pop-ups
-- Better domain grouping for lights, climate, security, media, and covers
-- Label-based filtering
-- Bubble Card theme variables
-- More customizable overview sections
+Development is organized into testable release packages. See [ROADMAP.md](ROADMAP.md) for the complete plan and current status, and [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Credits
 

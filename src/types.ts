@@ -66,6 +66,8 @@ export type StrategyConfig = {
   max_entities_per_area?: number;
   media_player_card?: MediaPlayerCardType;
   show_camera_button?: boolean;
+  camera_live_view?: boolean;
+  enable_advanced_controls?: boolean;
   enable_sonos_grouping?: boolean;
   sonos_entities?: string[];
   theme_grouping?: ThemeGrouping;

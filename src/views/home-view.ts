@@ -7,14 +7,16 @@ import type {
   LovelaceCard,
   StrategyConfig,
 } from "../types";
-import { bubblePopup, bubbleSeparator, buttonToHash, fixedHomeCard } from "../cards/common";
+import { bubblePopup, bubbleSeparator, fixedHomeCard } from "../cards/common";
+import { buildCamerasPopup } from "../cards/cameras";
 import { entityToCard, groupRoomEntities } from "../cards/entity-cards";
 import { buildTopNavigation } from "../cards/navigation";
+import { buildSmartRoomCards } from "../cards/room-cards";
 import { createTranslator, type Translator } from "../i18n";
 import {
   findFirstStateEntity,
-  findPrimaryEntityForArea,
   findStateEntities,
+  getCameraEntities,
   getAreaEntities,
   getRoomHash,
 } from "../utils/entities";
@@ -32,6 +34,7 @@ export function buildHomeView(
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
   const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
+  const cameras = getCameraEntities(entities, hass, options);
 
   return {
     type: "sections",
@@ -40,7 +43,7 @@ export function buildHomeView(
       {
         type: "grid",
         cards: [
-          buildTopNavigation(hass, options),
+          buildTopNavigation(hass, options, cameras.length > 0),
           ...(overviewCards.length
             ? [
                 {
@@ -52,7 +55,8 @@ export function buildHomeView(
               ]
             : []),
           ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : []),
-          ...buildRoomsSection(areas, entities, devices, t),
+          ...buildRoomsSection(areas, entities, devices, hass, options, t),
+          ...(cameras.length ? [buildCamerasPopup(cameras, hass, options, t("cameras"))] : []),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
           ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t),
         ],
@@ -86,8 +90,8 @@ function buildOverviewCards(hass: HomeAssistant): LovelaceCard[] {
             entity,
             icon: "mdi:play",
             tap_action: {
-              action: "call-service",
-              service: "vacuum.start",
+              action: "perform-action",
+              perform_action: "vacuum.start",
               target: {
                 entity_id: entity,
               },
@@ -103,6 +107,8 @@ function buildRoomsSection(
   areas: HassArea[],
   entities: HassEntity[],
   devices: HassDevice[],
+  hass: HomeAssistant,
+  options: StrategyConfig,
   t: Translator,
 ): LovelaceCard[] {
   return [
@@ -111,16 +117,7 @@ function buildRoomsSection(
       type: "grid",
       square: false,
       columns: 2,
-      cards: areas.map((area) => {
-        const primaryEntity = findPrimaryEntityForArea(area.area_id, entities, devices);
-
-        return buttonToHash(
-          area.name,
-          area.icon || "mdi:home-outline",
-          getRoomHash(area),
-          primaryEntity?.entity_id,
-        );
-      }),
+      cards: buildSmartRoomCards(areas, entities, devices, hass, options),
     },
   ];
 }

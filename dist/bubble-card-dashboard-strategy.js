@@ -3,10 +3,12 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.21.0";
+var VERSION = "0.22.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_MEDIA_PLAYER_CARD = "bubble-card";
 var DEFAULT_SHOW_CAMERA_BUTTON = true;
+var DEFAULT_CAMERA_LIVE_VIEW = false;
+var DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
 var DEFAULT_ENABLE_SONOS_GROUPING = true;
 var DEFAULT_ROOM_ORDER = "alphabetical";
 var DEFAULT_SUMMARY_COLUMNS = 2;
@@ -26,9 +28,12 @@ var DOMAIN_CARD_TYPES = {
   light: "button",
   lock: "button",
   media_player: "media-player",
+  number: "button",
   scene: "button",
   script: "button",
   select: "select",
+  input_number: "button",
+  input_select: "select",
   switch: "button",
   vacuum: "button"
 };
@@ -137,7 +142,21 @@ function mediaPlayerToCard(entityId, options, sonosEntities = []) {
         type: "custom:bubble-card",
         card_type: "media-player",
         entity: entityId,
-        rows: DESIGN.cardRows.mediaPlayer
+        rows: DESIGN.cardRows.mediaPlayer,
+        ...options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS ? {
+          sub_button: {
+            main: [
+              {
+                entity: entityId,
+                sub_button_type: "slider",
+                slider_value_position: "hidden",
+                show_icon: false,
+                fill_width: true
+              }
+            ],
+            bottom: []
+          }
+        } : {}
       };
   }
 }
@@ -261,11 +280,14 @@ function getAreaEntities(areaId, entities, devices, hass, options) {
   const ignoredDomains = /* @__PURE__ */ new Set([...options.ignored_domains ?? [], ...DEFAULT_IGNORED_DOMAINS]);
   return entities.filter((entity) => entityBelongsToArea(entity, areaId, devices)).filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id))).filter((entity) => DOMAIN_CARD_TYPES[getDomain(entity.entity_id)]).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
 }
-function findPrimaryEntityForArea(areaId, entities, devices) {
-  return entities.find((entity) => {
-    const domain = getDomain(entity.entity_id);
-    return ["light", "switch", "climate", "cover"].includes(domain) && entityBelongsToArea(entity, areaId, devices);
-  });
+function getVisibleAreaEntities(areaId, entities, devices, hass, options) {
+  const ignoredEntities = new Set(options.ignored_entities ?? []);
+  const ignoredDomains = new Set(options.ignored_domains ?? []);
+  return entities.filter((entity) => entityBelongsToArea(entity, areaId, devices)).filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id)));
+}
+function getCameraEntities(entities, hass, options) {
+  const ignoredEntities = new Set(options.ignored_entities ?? []);
+  return entities.filter((entity) => getDomain(entity.entity_id) === "camera").filter((entity) => entity.entity_id in hass.states).filter((entity) => !entity.hidden_by && !entity.disabled_by).filter((entity) => !ignoredEntities.has(entity.entity_id)).sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
 }
 function getFriendlyName(entity, hass) {
   const state = hass.states[entity.entity_id];
@@ -299,6 +321,8 @@ function getRoomHash(area) {
 // src/editor.ts
 var BOOLEAN_FIELDS = /* @__PURE__ */ new Set([
   "show_camera_button",
+  "camera_live_view",
+  "enable_advanced_controls",
   "enable_sonos_grouping",
   "show_light_summary",
   "show_security_summary",
@@ -326,6 +350,8 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
       media_player_card: DEFAULT_MEDIA_PLAYER_CARD,
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
+      camera_live_view: DEFAULT_CAMERA_LIVE_VIEW,
+      enable_advanced_controls: DEFAULT_ENABLE_ADVANCED_CONTROLS,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config
@@ -358,6 +384,8 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
+    const cameraLiveView = this._config.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW;
+    const enableAdvancedControls = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
@@ -520,6 +548,11 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <div class="hint">Shows or hides the camera icon in the top navigation.</div>
         </div>
         <div class="field">
+          <label for="camera_live_view">Live camera previews</label>
+          <input id="camera_live_view" data-field="camera_live_view" type="checkbox" ${cameraLiveView ? "checked" : ""}>
+          <div class="hint">Starts camera cards in live mode. Leave disabled for lower bandwidth and faster pop-ups.</div>
+        </div>
+        <div class="field">
           <label for="profile_image">Profile image</label>
           <input id="profile_image" data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">
           <div class="hint">Optional image URL for the round avatar. Leave empty to show the current user's initial.</div>
@@ -541,6 +574,15 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
           <label for="enable_sonos_grouping">Sonos grouping</label>
           <input id="enable_sonos_grouping" data-field="enable_sonos_grouping" type="checkbox" ${enableSonosGrouping ? "checked" : ""}>
           <div class="hint">Adds Mini Media Player speaker group controls for detected Sonos media players.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Controls</div>
+        <div class="field">
+          <label for="enable_advanced_controls">Advanced Bubble controls</label>
+          <input id="enable_advanced_controls" data-field="enable_advanced_controls" type="checkbox" ${enableAdvancedControls ? "checked" : ""}>
+          <div class="hint">Uses Bubble sliders and select sub-buttons for compatible lights, fans, numbers, climate entities and media players.</div>
         </div>
       </div>
 
@@ -788,7 +830,11 @@ function bubblePopup(config) {
     hash: config.hash,
     name: config.name,
     icon: config.icon,
-    popup_mode: "centered",
+    popup_mode: "adaptive-dialog",
+    popup_style: "bubble",
+    performance_mode: "performance",
+    with_bottom_offset: true,
+    full_width_on_mobile: true,
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
@@ -807,22 +853,6 @@ function bubbleSeparator(name, icon) {
     card_type: "separator",
     name,
     icon
-  };
-}
-function buttonToHash(name, icon, hash, entity) {
-  return {
-    type: "custom:bubble-card",
-    card_type: "button",
-    button_type: "name",
-    name,
-    icon,
-    entity,
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: hash
-      }
-    }
   };
 }
 function buildFooter(areas) {
@@ -880,7 +910,7 @@ function groupRoomEntities(entities) {
     {
       titleKey: "devices",
       icon: "mdi:power-plug",
-      domains: ["alarm_control_panel", "lock", "select", "vacuum"],
+      domains: ["alarm_control_panel", "lock", "select", "input_select", "number", "input_number", "vacuum"],
       columns: 2
     }
   ];
@@ -889,43 +919,67 @@ function groupRoomEntities(entities) {
     entities: entities.filter((entity) => definition.domains.includes(getDomain(entity.entity_id)))
   }));
 }
-function entityCardTemplate(domain) {
+function entityCardTemplate(domain, options = {}) {
   if (domain === "media_player") {
     return { type: "custom:bubble-card", card_type: "media-player" };
   }
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
   if (cardType === "button") {
+    const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
     return {
       type: "custom:bubble-card",
       card_type: "button",
-      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch"
+      button_type: useSlider ? "slider" : ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      ...useSlider ? { slider_value_position: "right" } : {}
     };
   }
-  return { type: "custom:bubble-card", card_type: cardType };
+  return bubbleDomainCard(cardType, domain, void 0, options);
 }
 function entityToCard(entity, options, sonosEntities = []) {
   const domain = getDomain(entity.entity_id);
   if (domain === "media_player") {
     return mediaPlayerToCard(entity.entity_id, options, sonosEntities);
   }
-  return entityToBubbleCard(entity);
+  return entityToBubbleCard(entity, options);
 }
-function entityToBubbleCard(entity) {
+function entityToBubbleCard(entity, options) {
   const domain = getDomain(entity.entity_id);
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
   if (cardType === "button") {
+    const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
     return {
       type: "custom:bubble-card",
       card_type: "button",
       entity: entity.entity_id,
-      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch"
+      button_type: useSlider ? "slider" : ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      ...useSlider ? { slider_value_position: "right" } : {}
     };
   }
+  return bubbleDomainCard(cardType, domain, entity.entity_id, options);
+}
+function bubbleDomainCard(cardType, domain, entityId, options) {
   return {
     type: "custom:bubble-card",
     card_type: cardType,
-    entity: entity.entity_id
+    ...entityId ? { entity: entityId } : {},
+    ...entityId && useAdvancedControls(options) && domain === "climate" ? {
+      sub_button: {
+        main: [
+          {
+            ...entityId ? { entity: entityId } : {},
+            sub_button_type: "select",
+            select_attribute: "hvac_modes",
+            show_state: true,
+            fill_width: false
+          }
+        ],
+        bottom: []
+      }
+    } : {}
   };
+}
+function useAdvancedControls(options) {
+  return options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
 }
 
 // src/views/area-view.ts
@@ -955,8 +1009,32 @@ function buildAreaView(area, entities, devices, hass, options) {
   };
 }
 
+// src/cards/cameras.ts
+function buildCamerasPopup(cameras, hass, options, name) {
+  return bubblePopup({
+    hash: "#cameras",
+    name,
+    icon: "mdi:video",
+    cards: [
+      {
+        type: "grid",
+        square: false,
+        columns: cameras.length === 1 ? 1 : 2,
+        cards: cameras.map((camera) => ({
+          type: "picture-entity",
+          entity: camera.entity_id,
+          name: getFriendlyName(camera, hass),
+          camera_view: options.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW ? "live" : "auto",
+          show_name: true,
+          show_state: false
+        }))
+      }
+    ]
+  });
+}
+
 // src/cards/navigation.ts
-function buildTopNavigation(hass, options) {
+function buildTopNavigation(hass, options, hasCameras) {
   const showCameraButton = options.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
   return {
     type: "horizontal-stack",
@@ -964,7 +1042,7 @@ function buildTopNavigation(hass, options) {
       subButtonBar([profileSubButton(hass, options)], "flex-start"),
       subButtonBar(
         [
-          ...showCameraButton ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []
+          ...showCameraButton && hasCameras ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []
         ],
         "center"
       ),
@@ -1017,6 +1095,76 @@ function navigationSubButton(name, icon, navigationPath) {
   };
 }
 
+// src/cards/room-cards.ts
+function buildSmartRoomCards(areas, entities, devices, hass, options) {
+  return areas.map((area) => smartRoomCard(area, entities, devices, hass, options));
+}
+function smartRoomCard(area, entities, devices, hass, options) {
+  const areaEntities = getVisibleAreaEntities(area.area_id, entities, devices, hass, options);
+  const primaryEntity = findRoomPrimaryEntity(areaEntities);
+  const statusEntities = findRoomStatusEntities(areaEntities, hass).filter(
+    (entity) => entity.entity_id !== primaryEntity?.entity_id
+  );
+  const primaryDomain = primaryEntity ? getDomain(primaryEntity.entity_id) : "";
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: primaryEntity ? ["light", "switch"].includes(primaryDomain) ? "switch" : "state" : "name",
+    name: area.name,
+    icon: area.icon || "mdi:home-outline",
+    ...primaryEntity ? { entity: primaryEntity.entity_id } : {},
+    card_layout: "large",
+    rows: 2,
+    show_state: false,
+    button_action: {
+      tap_action: {
+        action: "navigate",
+        navigation_path: getRoomHash(area)
+      }
+    },
+    ...statusEntities.length ? {
+      sub_button: {
+        main: statusEntities.map(roomStatusSubButton),
+        bottom: []
+      }
+    } : {}
+  };
+}
+function findRoomPrimaryEntity(entities) {
+  for (const domain of ["light", "switch", "climate", "cover"]) {
+    const entity = entities.find((candidate) => getDomain(candidate.entity_id) === domain);
+    if (entity) return entity;
+  }
+  return void 0;
+}
+function findRoomStatusEntities(entities, hass) {
+  const findByDeviceClass = (domain, deviceClasses) => entities.find((entity) => {
+    const state = hass.states[entity.entity_id];
+    return getDomain(entity.entity_id) === domain && deviceClasses.includes(String(state?.attributes.device_class || ""));
+  });
+  const candidates = [
+    findByDeviceClass("sensor", ["temperature"]),
+    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
+    findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
+    entities.find((entity) => getDomain(entity.entity_id) === "light")
+  ];
+  return candidates.filter((entity) => Boolean(entity)).slice(0, 4);
+}
+function roomStatusSubButton(entity) {
+  const domain = getDomain(entity.entity_id);
+  return {
+    entity: entity.entity_id,
+    show_state: domain === "sensor" || domain === "binary_sensor",
+    show_name: false,
+    show_background: true,
+    state_background: domain !== "sensor",
+    fill_width: false,
+    tap_action: {
+      action: domain === "light" ? "toggle" : "more-info"
+    }
+  };
+}
+
 // src/i18n.ts
 var STRINGS = {
   en: {
@@ -1029,6 +1177,7 @@ var STRINGS = {
     scenes: "Scenes",
     devices: "Devices",
     rooms: "Rooms",
+    cameras: "Cameras",
     on: "On",
     off: "Off",
     allOn: "All on",
@@ -1059,6 +1208,7 @@ var STRINGS = {
     scenes: "Szenen",
     devices: "Ger\xE4te",
     rooms: "R\xE4ume",
+    cameras: "Kameras",
     on: "An",
     off: "Aus",
     allOn: "Alle an",
@@ -1286,9 +1436,9 @@ function buildSummaryCards(summary, hass, options, sonosEntities, t) {
     return summary.kind === "security" ? buildSecurityCards(hass, options, t) : buildBatteryCards(options, t);
   }
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
-  return grouping === "state" ? buildStateGroupedCards(summary, t) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
+  return grouping === "state" ? buildStateGroupedCards(summary, options, t) : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
 }
-function buildStateGroupedCards(summary, t) {
+function buildStateGroupedCards(summary, options, t) {
   const isLights = summary.domains.includes("light");
   return [
     stateSeparator(
@@ -1297,14 +1447,14 @@ function buildStateGroupedCards(summary, t) {
       stateCountExpression(summary.domains, "on"),
       isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : void 0
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on") }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options) }),
     stateSeparator(
       t("off"),
       "mdi:toggle-switch-off-outline",
       stateCountExpression(summary.domains, "off"),
       isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : void 0
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off") })
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options) })
   ];
 }
 function stateSeparator(name, icon, countExpression, master) {
@@ -1325,8 +1475,8 @@ function masterSubButton(name, icon, service) {
     show_icon: true,
     show_background: true,
     tap_action: {
-      action: "call-service",
-      service,
+      action: "perform-action",
+      perform_action: service,
       target: { entity_id: "all" },
       data: {}
     }
@@ -1340,12 +1490,12 @@ function stateCountExpression(domains, bucket) {
   ).join(" || ");
   return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
 }
-function buildStateIncludes(domains, bucket) {
+function buildStateIncludes(domains, bucket, options) {
   return domains.flatMap(
     (domain) => (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map((state) => ({
       domain,
       state,
-      options: entityCardTemplate(domain)
+      options: entityCardTemplate(domain, options)
     }))
   );
 }
@@ -1533,6 +1683,7 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
   const summaryColumns = options.summary_columns ?? DEFAULT_SUMMARY_COLUMNS;
   const overviewCards = buildOverviewCards(hass);
+  const cameras = getCameraEntities(entities, hass, options);
   return {
     type: "sections",
     max_columns: 2,
@@ -1540,7 +1691,7 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
       {
         type: "grid",
         cards: [
-          buildTopNavigation(hass, options),
+          buildTopNavigation(hass, options, cameras.length > 0),
           ...overviewCards.length ? [
             {
               type: "grid",
@@ -1550,7 +1701,8 @@ function buildHomeView(areas, entities, devices, hass, options, sonosEntities = 
             }
           ] : [],
           ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, summaryColumns, options, t)] : [],
-          ...buildRoomsSection(areas, entities, devices, t),
+          ...buildRoomsSection(areas, entities, devices, hass, options, t),
+          ...cameras.length ? [buildCamerasPopup(cameras, hass, options, t("cameras"))] : [],
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, sonosEntities, t)),
           ...buildSummaryPopups(activeSummaries, hass, options, sonosEntities, t)
         ]
@@ -1580,8 +1732,8 @@ function buildOverviewCards(hass) {
             entity,
             icon: "mdi:play",
             tap_action: {
-              action: "call-service",
-              service: "vacuum.start",
+              action: "perform-action",
+              perform_action: "vacuum.start",
               target: {
                 entity_id: entity
               }
@@ -1592,22 +1744,14 @@ function buildOverviewCards(hass) {
     )
   ];
 }
-function buildRoomsSection(areas, entities, devices, t) {
+function buildRoomsSection(areas, entities, devices, hass, options, t) {
   return [
     bubbleSeparator(t("rooms"), "mdi:floor-plan"),
     {
       type: "grid",
       square: false,
       columns: 2,
-      cards: areas.map((area) => {
-        const primaryEntity = findPrimaryEntityForArea(area.area_id, entities, devices);
-        return buttonToHash(
-          area.name,
-          area.icon || "mdi:home-outline",
-          getRoomHash(area),
-          primaryEntity?.entity_id
-        );
-      })
+      cards: buildSmartRoomCards(areas, entities, devices, hass, options)
     }
   ];
 }

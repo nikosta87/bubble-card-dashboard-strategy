@@ -2,7 +2,7 @@ import { DEFAULT_SHOW_CAMERA_BUTTON } from "../constants";
 import type { HomeAssistant, LovelaceCard, StrategyConfig } from "../types";
 import { getUserInitial } from "../utils/entities";
 
-export function buildTopNavigation(hass: HomeAssistant, options: StrategyConfig): LovelaceCard {
+export function buildTopNavigation(hass: HomeAssistant, options: StrategyConfig, hasCameras: boolean): LovelaceCard {
   const showCameraButton = options.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
 
   return {
@@ -11,7 +11,7 @@ export function buildTopNavigation(hass: HomeAssistant, options: StrategyConfig)
       subButtonBar([profileSubButton(hass, options)], "flex-start"),
       subButtonBar(
         [
-          ...(showCameraButton ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []),
+          ...(showCameraButton && hasCameras ? [navigationSubButton("Cameras", "mdi:video", "#cameras")] : []),
         ],
         "center",
       ),

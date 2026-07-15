@@ -1,5 +1,6 @@
 import {
   DEFAULT_ENABLE_SONOS_GROUPING,
+  DEFAULT_ENABLE_ADVANCED_CONTROLS,
   DEFAULT_MEDIA_PLAYER_CARD,
 } from "../constants";
 import { DESIGN } from "../design";
@@ -47,6 +48,22 @@ export function mediaPlayerToCard(
         card_type: "media-player",
         entity: entityId,
         rows: DESIGN.cardRows.mediaPlayer,
+        ...((options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS)
+          ? {
+              sub_button: {
+                main: [
+                  {
+                    entity: entityId,
+                    sub_button_type: "slider",
+                    slider_value_position: "hidden",
+                    show_icon: false,
+                    fill_width: true,
+                  },
+                ],
+                bottom: [],
+              },
+            }
+          : {}),
       };
   }
 }

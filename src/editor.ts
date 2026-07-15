@@ -1,6 +1,8 @@
 import {
   DEFAULT_BATTERY_CRITICAL_BELOW,
   DEFAULT_BATTERY_LOW_BELOW,
+  DEFAULT_CAMERA_LIVE_VIEW,
+  DEFAULT_ENABLE_ADVANCED_CONTROLS,
   DEFAULT_ENABLE_SONOS_GROUPING,
   DEFAULT_HIDE_MOBILE_APP_BATTERIES,
   DEFAULT_MAX_ENTITIES_PER_AREA,
@@ -18,6 +20,8 @@ import { clampNumber, escapeHtml } from "./utils/format";
 
 const BOOLEAN_FIELDS = new Set([
   "show_camera_button",
+  "camera_live_view",
+  "enable_advanced_controls",
   "enable_sonos_grouping",
   "show_light_summary",
   "show_security_summary",
@@ -52,6 +56,8 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
       media_player_card: DEFAULT_MEDIA_PLAYER_CARD,
       max_entities_per_area: DEFAULT_MAX_ENTITIES_PER_AREA,
       show_camera_button: DEFAULT_SHOW_CAMERA_BUTTON,
+      camera_live_view: DEFAULT_CAMERA_LIVE_VIEW,
+      enable_advanced_controls: DEFAULT_ENABLE_ADVANCED_CONTROLS,
       enable_sonos_grouping: DEFAULT_ENABLE_SONOS_GROUPING,
       room_order: DEFAULT_ROOM_ORDER,
       ...config,
@@ -91,6 +97,8 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
     const mediaPlayerCard = getMediaPlayerCardType(this._config);
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
     const showCameraButton = this._config.show_camera_button ?? DEFAULT_SHOW_CAMERA_BUTTON;
+    const cameraLiveView = this._config.camera_live_view ?? DEFAULT_CAMERA_LIVE_VIEW;
+    const enableAdvancedControls = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
     const enableSonosGrouping = this._config.enable_sonos_grouping ?? DEFAULT_ENABLE_SONOS_GROUPING;
     const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
@@ -254,6 +262,11 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           <div class="hint">Shows or hides the camera icon in the top navigation.</div>
         </div>
         <div class="field">
+          <label for="camera_live_view">Live camera previews</label>
+          <input id="camera_live_view" data-field="camera_live_view" type="checkbox" ${cameraLiveView ? "checked" : ""}>
+          <div class="hint">Starts camera cards in live mode. Leave disabled for lower bandwidth and faster pop-ups.</div>
+        </div>
+        <div class="field">
           <label for="profile_image">Profile image</label>
           <input id="profile_image" data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">
           <div class="hint">Optional image URL for the round avatar. Leave empty to show the current user's initial.</div>
@@ -275,6 +288,15 @@ export class BubbleCardDashboardStrategyEditor extends HTMLElement {
           <label for="enable_sonos_grouping">Sonos grouping</label>
           <input id="enable_sonos_grouping" data-field="enable_sonos_grouping" type="checkbox" ${enableSonosGrouping ? "checked" : ""}>
           <div class="hint">Adds Mini Media Player speaker group controls for detected Sonos media players.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Controls</div>
+        <div class="field">
+          <label for="enable_advanced_controls">Advanced Bubble controls</label>
+          <input id="enable_advanced_controls" data-field="enable_advanced_controls" type="checkbox" ${enableAdvancedControls ? "checked" : ""}>
+          <div class="hint">Uses Bubble sliders and select sub-buttons for compatible lights, fans, numbers, climate entities and media players.</div>
         </div>
       </div>
 

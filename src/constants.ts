@@ -4,11 +4,13 @@ export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 export const VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 export const EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-export const VERSION = "0.21.0";
+export const VERSION = "0.22.0";
 
 export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_MEDIA_PLAYER_CARD: MediaPlayerCardType = "bubble-card";
 export const DEFAULT_SHOW_CAMERA_BUTTON = true;
+export const DEFAULT_CAMERA_LIVE_VIEW = false;
+export const DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
 export const DEFAULT_ENABLE_SONOS_GROUPING = true;
 export const DEFAULT_THEME_GROUPING: ThemeGrouping = "state";
 export const DEFAULT_ROOM_ORDER: RoomOrder = "alphabetical";
@@ -30,9 +32,12 @@ export const DOMAIN_CARD_TYPES: Record<string, string> = {
   light: "button",
   lock: "button",
   media_player: "media-player",
+  number: "button",
   scene: "button",
   script: "button",
   select: "select",
+  input_number: "button",
+  input_select: "select",
   switch: "button",
   vacuum: "button",
 };

@@ -321,7 +321,7 @@ function buildSummaryCards(
   // default (lights: status, climate: room).
   const grouping = options.theme_grouping ?? summary.defaultGrouping;
   return grouping === "state"
-    ? buildStateGroupedCards(summary, t)
+    ? buildStateGroupedCards(summary, options, t)
     : buildStaticGroupedCards(summary, grouping, hass, options, sonosEntities);
 }
 
@@ -330,7 +330,7 @@ function buildSummaryCards(
 // Status grouping uses auto-entities so the On/Off groups update live and stay
 // sorted alphabetically as entities change state. Each separator hides itself
 // when its group is empty and (for lights) carries an "all on/off" master button.
-function buildStateGroupedCards(summary: ResolvedDomainSummary, t: Translator): LovelaceCard[] {
+function buildStateGroupedCards(summary: ResolvedDomainSummary, options: StrategyConfig, t: Translator): LovelaceCard[] {
   const isLights = summary.domains.includes("light");
 
   return [
@@ -340,14 +340,14 @@ function buildStateGroupedCards(summary: ResolvedDomainSummary, t: Translator): 
       stateCountExpression(summary.domains, "on"),
       isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : undefined,
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on") }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options) }),
     stateSeparator(
       t("off"),
       "mdi:toggle-switch-off-outline",
       stateCountExpression(summary.domains, "off"),
       isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : undefined,
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off") }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options) }),
   ];
 }
 
@@ -372,8 +372,8 @@ function masterSubButton(name: string, icon: string, service: string): LovelaceC
     show_icon: true,
     show_background: true,
     tap_action: {
-      action: "call-service",
-      service,
+      action: "perform-action",
+      perform_action: service,
       target: { entity_id: "all" },
       data: {},
     },
@@ -394,12 +394,12 @@ function stateCountExpression(domains: string[], bucket: "on" | "off"): string {
   return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
 }
 
-function buildStateIncludes(domains: string[], bucket: "on" | "off"): AutoEntitiesFilter[] {
+function buildStateIncludes(domains: string[], bucket: "on" | "off", options: StrategyConfig): AutoEntitiesFilter[] {
   return domains.flatMap((domain) =>
     (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map((state) => ({
       domain,
       state,
-      options: entityCardTemplate(domain),
+      options: entityCardTemplate(domain, options),
     })),
   );
 }

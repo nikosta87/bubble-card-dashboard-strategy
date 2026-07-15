@@ -1,4 +1,4 @@
-import { DOMAIN_CARD_TYPES } from "../constants";
+import { DEFAULT_ENABLE_ADVANCED_CONTROLS, DOMAIN_CARD_TYPES } from "../constants";
 import type { HassEntity, LovelaceCard, StrategyConfig } from "../types";
 import type { TranslationKey } from "../i18n";
 import { getDomain } from "../utils/entities";
@@ -47,7 +47,7 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
     {
       titleKey: "devices",
       icon: "mdi:power-plug",
-      domains: ["alarm_control_panel", "lock", "select", "vacuum"],
+      domains: ["alarm_control_panel", "lock", "select", "input_select", "number", "input_number", "vacuum"],
       columns: 2,
     },
   ];
@@ -62,7 +62,7 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
  * A card template for a domain without a fixed entity. auto-entities injects the
  * matched `entity` into this template, so it must not carry one itself.
  */
-export function entityCardTemplate(domain: string): LovelaceCard {
+export function entityCardTemplate(domain: string, options: StrategyConfig = {}): LovelaceCard {
   // auto-entities injects `entity`, so media players always use the entity-based
   // Bubble Card here (mini-media-player/YAMP use different entity keys).
   if (domain === "media_player") {
@@ -72,14 +72,16 @@ export function entityCardTemplate(domain: string): LovelaceCard {
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
 
   if (cardType === "button") {
+    const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
     return {
       type: "custom:bubble-card",
       card_type: "button",
-      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      button_type: useSlider ? "slider" : ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      ...(useSlider ? { slider_value_position: "right" } : {}),
     };
   }
 
-  return { type: "custom:bubble-card", card_type: cardType };
+  return bubbleDomainCard(cardType, domain, undefined, options);
 }
 
 export function entityToCard(entity: HassEntity, options: StrategyConfig, sonosEntities: string[] = []): LovelaceCard {
@@ -89,25 +91,56 @@ export function entityToCard(entity: HassEntity, options: StrategyConfig, sonosE
     return mediaPlayerToCard(entity.entity_id, options, sonosEntities);
   }
 
-  return entityToBubbleCard(entity);
+  return entityToBubbleCard(entity, options);
 }
 
-function entityToBubbleCard(entity: HassEntity): LovelaceCard {
+function entityToBubbleCard(entity: HassEntity, options: StrategyConfig): LovelaceCard {
   const domain = getDomain(entity.entity_id);
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
 
   if (cardType === "button") {
+    const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
     return {
       type: "custom:bubble-card",
       card_type: "button",
       entity: entity.entity_id,
-      button_type: ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      button_type: useSlider ? "slider" : ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      ...(useSlider ? { slider_value_position: "right" } : {}),
     };
   }
 
+  return bubbleDomainCard(cardType, domain, entity.entity_id, options);
+}
+
+function bubbleDomainCard(
+  cardType: string,
+  domain: string,
+  entityId: string | undefined,
+  options: StrategyConfig,
+): LovelaceCard {
   return {
     type: "custom:bubble-card",
     card_type: cardType,
-    entity: entity.entity_id,
+    ...(entityId ? { entity: entityId } : {}),
+    ...(entityId && useAdvancedControls(options) && domain === "climate"
+      ? {
+          sub_button: {
+            main: [
+              {
+                ...(entityId ? { entity: entityId } : {}),
+                sub_button_type: "select",
+                select_attribute: "hvac_modes",
+                show_state: true,
+                fill_width: false,
+              },
+            ],
+            bottom: [],
+          },
+        }
+      : {}),
   };
+}
+
+function useAdvancedControls(options: StrategyConfig): boolean {
+  return options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
 }

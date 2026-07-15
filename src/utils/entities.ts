@@ -81,6 +81,40 @@ export function getAreaEntities(
     .sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
 }
 
+/** Visible area entities without the dashboard's default domain exclusions. */
+export function getVisibleAreaEntities(
+  areaId: string,
+  entities: HassEntity[],
+  devices: HassDevice[],
+  hass: HomeAssistant,
+  options: StrategyConfig,
+): HassEntity[] {
+  const ignoredEntities = new Set(options.ignored_entities ?? []);
+  const ignoredDomains = new Set(options.ignored_domains ?? []);
+
+  return entities
+    .filter((entity) => entityBelongsToArea(entity, areaId, devices))
+    .filter((entity) => entity.entity_id in hass.states)
+    .filter((entity) => !entity.hidden_by && !entity.disabled_by)
+    .filter((entity) => !ignoredEntities.has(entity.entity_id))
+    .filter((entity) => !ignoredDomains.has(getDomain(entity.entity_id)));
+}
+
+export function getCameraEntities(
+  entities: HassEntity[],
+  hass: HomeAssistant,
+  options: StrategyConfig,
+): HassEntity[] {
+  const ignoredEntities = new Set(options.ignored_entities ?? []);
+
+  return entities
+    .filter((entity) => getDomain(entity.entity_id) === "camera")
+    .filter((entity) => entity.entity_id in hass.states)
+    .filter((entity) => !entity.hidden_by && !entity.disabled_by)
+    .filter((entity) => !ignoredEntities.has(entity.entity_id))
+    .sort((left, right) => getFriendlyName(left, hass).localeCompare(getFriendlyName(right, hass)));
+}
+
 export function findPrimaryEntityForArea(
   areaId: string,
   entities: HassEntity[],
