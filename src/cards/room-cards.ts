@@ -1,3 +1,4 @@
+import { bubbleLightSurfaceStyles } from "../design";
 import type { HassArea, HassDevice, HassEntity, HomeAssistant, LovelaceCard, StrategyConfig } from "../types";
 import { getDomain, getRoomHash, getVisibleAreaEntities } from "../utils/entities";
 
@@ -32,6 +33,7 @@ function smartRoomCard(
     name: area.name,
     icon: area.icon || "mdi:home-outline",
     ...(primaryEntity ? { entity: primaryEntity.entity_id } : {}),
+    ...(primaryDomain === "light" ? { use_accent_color: false, styles: bubbleLightSurfaceStyles() } : {}),
     card_layout: "large",
     rows: 2,
     show_name: true,
@@ -92,6 +94,7 @@ function roomStatusSubButton(entity: HassEntity): LovelaceCard {
     show_name: false,
     show_background: true,
     state_background: domain !== "sensor",
+    light_background: domain === "light",
     fill_width: false,
     tap_action: {
       action: domain === "light" ? "toggle" : "more-info",
