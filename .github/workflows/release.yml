@@ -12,6 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify committed HACS bundle
+        run: git diff --exit-code -- dist/bubble-card-dashboard-strategy.js
 
       - name: Create release for new version
         env:
@@ -27,9 +35,6 @@ jobs:
 
           echo "Creating release $TAG"
 
-          # Use the merge commit body as the changelog so the release notes
-          # describe what actually changed. Fall back to auto-generated notes
-          # when the commit has no body.
           git log -1 --pretty=format:'%b' "$GITHUB_SHA" > /tmp/release-notes.md
 
           if [ -s /tmp/release-notes.md ]; then
