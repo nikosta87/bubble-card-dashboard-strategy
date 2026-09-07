@@ -3,25 +3,6 @@ import { DESIGN, bubbleThemeStyles } from "../design";
 import type { HassArea, LovelaceCard } from "../types";
 import { getRoomHash } from "../utils/entities";
 
-export function fixedHomeCard(card: LovelaceCard): LovelaceCard {
-  const height = DESIGN.homeCard.height;
-
-  return {
-    ...card,
-    card_mod: {
-      style: `
-        ha-card {
-          height: ${height};
-          min-height: ${height};
-          max-height: ${height};
-          overflow: hidden;
-        }
-      `,
-    },
-  };
-}
-
-/** Shared Bubble Card pop-up wrapper, styled from the design tokens. */
 export function bubblePopup(config: {
   hash: string;
   name: string;
@@ -39,13 +20,9 @@ export function bubblePopup(config: {
     popup_style: "bubble",
     performance_mode: "performance",
     with_bottom_offset: true,
-    full_width_on_mobile: true,
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
-    // The back arrow only makes sense when a previous pop-up was open. Our
-    // pop-ups open directly from the home view, so it would just duplicate the
-    // close button — off unless a caller explicitly opts in.
     show_previous_button: config.showPreviousButton ?? false,
     close_by_clicking_outside: true,
     styles: bubbleThemeStyles(),
@@ -54,12 +31,7 @@ export function bubblePopup(config: {
 }
 
 export function bubbleSeparator(name: string, icon: string): LovelaceCard {
-  return {
-    type: "custom:bubble-card",
-    card_type: "separator",
-    name,
-    icon,
-  };
+  return { type: "custom:bubble-card", card_type: "separator", name, icon };
 }
 
 export function buttonToHash(name: string, icon: string, hash: string, entity?: string): LovelaceCard {
@@ -70,32 +42,39 @@ export function buttonToHash(name: string, icon: string, hash: string, entity?: 
     name,
     icon,
     entity,
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: hash,
-      },
-    },
+    button_action: { tap_action: { action: "navigate", navigation_path: hash } },
   };
 }
 
-export function buildFooter(areas: HassArea[]): LovelaceCard {
-  const footer: LovelaceCard = {
+/** Mobile-first Bubble footer. Kept intentionally short: rooms are the primary navigation. */
+export function buildFooter(areas: HassArea[], roomsLabel = "Rooms"): LovelaceCard {
+  const group: LovelaceCard[] = [
+    {
+      name: roomsLabel,
+      icon: "mdi:floor-plan",
+      show_name: true,
+      fill_width: true,
+      tap_action: { action: "navigate", navigation_path: ROOMS_POPUP_HASH },
+    },
+    ...areas.slice(0, 4).map((area) => ({
+      name: area.name,
+      icon: area.icon || "mdi:home-outline",
+      show_name: false,
+      fill_width: true,
+      tap_action: { action: "navigate", navigation_path: getRoomHash(area) },
+    })),
+  ];
+
+  return {
     type: "custom:bubble-card",
-    card_type: "horizontal-buttons-stack",
-    "1_link": ROOMS_POPUP_HASH,
-    "1_name": "Rooms",
-    "1_icon": "mdi:floor-plan",
-    auto_order: false,
-    highlight_current_view: true,
+    card_type: "sub-buttons",
+    footer_mode: true,
+    footer_full_width: true,
+    footer_bottom_offset: 12,
+    rows: 0.941,
+    sub_button: {
+      main: [],
+      bottom: [{ name: "Navigation", buttons_layout: "inline", justify_content: "fill", group }],
+    },
   };
-
-  areas.slice(0, 6).forEach((area, index) => {
-    const position = index + 2;
-    footer[`${position}_link`] = getRoomHash(area);
-    footer[`${position}_name`] = area.name;
-    footer[`${position}_icon`] = area.icon || "mdi:home-outline";
-  });
-
-  return footer;
 }
