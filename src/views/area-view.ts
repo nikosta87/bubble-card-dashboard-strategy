@@ -19,7 +19,7 @@ export function buildAreaView(
 ) {
   const cards = getAreaEntities(area.area_id, entities, devices, hass, options)
     .slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA)
-    .map((entity) => entityToCard(entity, options));
+    .map((entity) => entityToCard(entity, options, hass));
 
   return {
     type: "sections",
