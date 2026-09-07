@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.22.1";
+var VERSION = "0.23.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
 var DEFAULT_ROOM_ORDER = "alphabetical";
@@ -161,6 +161,52 @@ function findStateEntities(hass, domains) {
 }
 function findFirstStateEntity(hass, domains) {
   return findStateEntities(hass, domains)[0];
+}
+function findLastUsedMediaPlayer(hass) {
+  const mediaPlayers = findStateEntities(hass, ["media_player"]);
+  return mediaPlayers.map((entityId) => ({
+    entityId,
+    score: getMediaPlayerScore(hass, entityId)
+  })).sort((left, right) => right.score - left.score || left.entityId.localeCompare(right.entityId))[0]?.entityId;
+}
+function getMediaPlayerScore(hass, entityId) {
+  const state = hass.states[entityId];
+  if (!state) {
+    return 0;
+  }
+  const stateRank = {
+    playing: 4,
+    paused: 3,
+    idle: 2,
+    standby: 1,
+    on: 1
+  };
+  const mediaMetadataBonus = hasMediaMetadata(state.attributes) ? 1e13 : 0;
+  const stateBonus = (stateRank[state.state] || 0) * 1e14;
+  const updatedAt = getMediaPlayerUpdatedAt(state);
+  return stateBonus + mediaMetadataBonus + updatedAt;
+}
+function hasMediaMetadata(attributes) {
+  return Boolean(
+    attributes.media_title || attributes.media_artist || attributes.media_album_name || attributes.entity_picture || attributes.app_name
+  );
+}
+function getMediaPlayerUpdatedAt(state) {
+  const candidates = [
+    state.attributes.media_position_updated_at,
+    state.last_updated,
+    state.last_changed
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") {
+      continue;
+    }
+    const timestamp = Date.parse(candidate);
+    if (!Number.isNaN(timestamp)) {
+      return timestamp;
+    }
+  }
+  return 0;
 }
 function getUserInitial(hass) {
   return (hass.user?.name || "?").trim().slice(0, 1).toUpperCase() || "?";
@@ -608,9 +654,6 @@ var DESIGN = {
     bgOpacity: "92",
     bgBlur: "14"
   },
-  homeCard: {
-    height: "190px"
-  },
   // card_layout for cards whose sub-buttons should sit on a second row instead of
   // inline with the name.
   cardLayout: {
@@ -632,24 +675,62 @@ function bubbleThemeStyles() {
 ${declarations}
 }`;
 }
+function bubbleLightSurfaceStyles() {
+  return `
+    \${(() => {
+      if (!entity || !entity.startsWith('light.')) return '';
+      const stateObj = hass.states[entity];
+      const attrs = stateObj?.attributes || {};
+      const clear = () => {
+        card.style.removeProperty('--bubble-button-main-background-color');
+        card.style.removeProperty('--bubble-button-icon-background-color');
+      };
+
+      if (!stateObj || stateObj.state !== 'on') {
+        clear();
+        return '';
+      }
+
+      let rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color.slice(0, 3).map(Number) : null;
+      let kelvin = Number(attrs.color_temp_kelvin || 0);
+      if (!kelvin && Number(attrs.color_temp || 0) > 0) kelvin = 1000000 / Number(attrs.color_temp);
+
+      if (!rgb && kelvin > 0) {
+        const temp = Math.max(10, Math.min(400, kelvin / 100));
+        const clamp = (value) => Math.max(0, Math.min(255, Math.round(value)));
+        let red;
+        let green;
+        let blue;
+
+        if (temp <= 66) {
+          red = 255;
+          green = 99.4708025861 * Math.log(temp) - 161.1195681661;
+          blue = temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
+        } else {
+          red = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
+          green = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
+          blue = 255;
+        }
+        rgb = [clamp(red), clamp(green), clamp(blue)];
+      }
+
+      if (!rgb || rgb.some((value) => !Number.isFinite(value))) {
+        clear();
+        return '';
+      }
+
+      const brightness = Math.max(0, Math.min(255, Number(attrs.brightness ?? 180))) / 255;
+      const surfaceAlpha = (0.10 + brightness * 0.12).toFixed(3);
+      const iconAlpha = (0.20 + brightness * 0.16).toFixed(3);
+      const color = rgb.map((value) => Math.max(0, Math.min(255, Math.round(value))));
+      card.style.setProperty('--bubble-button-main-background-color', 'rgba(' + color.join(',') + ',' + surfaceAlpha + ')');
+      card.style.setProperty('--bubble-button-icon-background-color', 'rgba(' + color.join(',') + ',' + iconAlpha + ')');
+      return '';
+    })()}
+  `;
+}
 
 // src/cards/common.ts
-function fixedHomeCard(card) {
-  const height = DESIGN.homeCard.height;
-  return {
-    ...card,
-    card_mod: {
-      style: `
-        ha-card {
-          height: ${height};
-          min-height: ${height};
-          max-height: ${height};
-          overflow: hidden;
-        }
-      `
-    }
-  };
-}
 function bubblePopup(config) {
   return {
     type: "custom:bubble-card",
@@ -661,13 +742,9 @@ function bubblePopup(config) {
     popup_style: "bubble",
     performance_mode: "performance",
     with_bottom_offset: true,
-    full_width_on_mobile: true,
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
-    // The back arrow only makes sense when a previous pop-up was open. Our
-    // pop-ups open directly from the home view, so it would just duplicate the
-    // close button — off unless a caller explicitly opts in.
     show_previous_button: config.showPreviousButton ?? false,
     close_by_clicking_outside: true,
     styles: bubbleThemeStyles(),
@@ -675,39 +752,55 @@ function bubblePopup(config) {
   };
 }
 function bubbleSeparator(name, icon) {
+  return { type: "custom:bubble-card", card_type: "separator", name, icon };
+}
+function buildFooter(areas, roomsLabel = "Rooms") {
+  const group = [
+    {
+      name: roomsLabel,
+      icon: "mdi:floor-plan",
+      show_name: true,
+      fill_width: true,
+      tap_action: { action: "navigate", navigation_path: ROOMS_POPUP_HASH }
+    },
+    ...areas.slice(0, 4).map((area) => ({
+      name: area.name,
+      icon: area.icon || "mdi:home-outline",
+      show_name: false,
+      fill_width: true,
+      tap_action: { action: "navigate", navigation_path: getRoomHash(area) }
+    }))
+  ];
   return {
     type: "custom:bubble-card",
-    card_type: "separator",
-    name,
-    icon
+    card_type: "sub-buttons",
+    footer_mode: true,
+    footer_full_width: true,
+    footer_bottom_offset: 12,
+    rows: 0.941,
+    sub_button: {
+      main: [],
+      bottom: [{ name: "Navigation", buttons_layout: "inline", justify_content: "fill", group }]
+    }
   };
-}
-function buildFooter(areas) {
-  const footer = {
-    type: "custom:bubble-card",
-    card_type: "horizontal-buttons-stack",
-    "1_link": ROOMS_POPUP_HASH,
-    "1_name": "Rooms",
-    "1_icon": "mdi:floor-plan",
-    auto_order: false,
-    highlight_current_view: true
-  };
-  areas.slice(0, 6).forEach((area, index) => {
-    const position = index + 2;
-    footer[`${position}_link`] = getRoomHash(area);
-    footer[`${position}_name`] = area.name;
-    footer[`${position}_icon`] = area.icon || "mdi:home-outline";
-  });
-  return footer;
 }
 
 // src/cards/media-player.ts
 function mediaPlayerToCard(entityId, options) {
+  const advanced = options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
   return {
     type: "custom:bubble-card",
     card_type: "media-player",
     entity: entityId,
-    ...options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS ? {
+    show_state: true,
+    cover_background: true,
+    main_buttons_position: "bottom",
+    main_buttons_full_width: true,
+    hide: {
+      previous_button: true,
+      next_button: true
+    },
+    ...advanced ? {
       card_layout: "large",
       rows: 2,
       sub_button: {
@@ -723,7 +816,8 @@ function mediaPlayerToCard(entityId, options) {
                 always_visible: true,
                 show_button_info: true,
                 slider_value_position: "right",
-                fill_width: true
+                fill_width: true,
+                hide_when_parent_unavailable: true
               }
             ]
           }
@@ -736,52 +830,12 @@ function mediaPlayerToCard(entityId, options) {
 // src/cards/entity-cards.ts
 function groupRoomEntities(entities) {
   const groupDefinitions = [
-    {
-      titleKey: "lights",
-      icon: "mdi:lightbulb-group",
-      domains: ["light"],
-      columns: 2
-    },
-    {
-      titleKey: "climate",
-      icon: "mdi:thermostat",
-      domains: ["climate", "fan", "humidifier"],
-      columns: 1
-    },
-    {
-      titleKey: "media",
-      icon: "mdi:speaker",
-      domains: ["media_player"],
-      columns: 1
-    },
-    {
-      titleKey: "covers",
-      icon: "mdi:window-shutter",
-      domains: ["cover"],
-      columns: 1
-    },
-    {
-      titleKey: "scenes",
-      icon: "mdi:palette",
-      domains: ["scene", "script", "button"],
-      columns: 2
-    },
-    {
-      titleKey: "devices",
-      icon: "mdi:power-plug",
-      domains: [
-        "alarm_control_panel",
-        "input_boolean",
-        "input_number",
-        "input_select",
-        "lock",
-        "number",
-        "select",
-        "switch",
-        "vacuum"
-      ],
-      columns: 2
-    }
+    { titleKey: "lights", icon: "mdi:lightbulb-group", domains: ["light"], columns: 2 },
+    { titleKey: "climate", icon: "mdi:thermostat", domains: ["climate", "fan", "humidifier"], columns: 1 },
+    { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"], columns: 1 },
+    { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"], columns: 1 },
+    { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"], columns: 2 },
+    { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"], columns: 2 }
   ];
   return groupDefinitions.map((definition) => ({
     ...definition,
@@ -789,9 +843,7 @@ function groupRoomEntities(entities) {
   }));
 }
 function entityCardTemplate(domain, options = {}) {
-  if (domain === "media_player") {
-    return { type: "custom:bubble-card", card_type: "media-player" };
-  }
+  if (domain === "media_player") return { type: "custom:bubble-card", card_type: "media-player" };
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
   if (cardType === "button") {
     const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
@@ -799,23 +851,95 @@ function entityCardTemplate(domain, options = {}) {
       type: "custom:bubble-card",
       card_type: "button",
       button_type: useSlider ? "slider" : ["scene", "script", "button"].includes(domain) ? "name" : "switch",
+      ...domain === "light" ? { use_accent_color: false, styles: bubbleLightSurfaceStyles() } : {},
       ...useSlider ? { slider_value_position: "right" } : {}
     };
   }
   return bubbleDomainCard(cardType, domain, void 0, options);
 }
-function entityToCard(entity, options) {
+function entityToCard(entity, options, hass) {
   const domain = getDomain(entity.entity_id);
-  if (domain === "media_player") {
-    return mediaPlayerToCard(entity.entity_id, options);
-  }
-  return entityToBubbleCard(entity, options);
+  if (domain === "media_player") return mediaPlayerToCard(entity.entity_id, options);
+  if (domain === "light") return lightToCard(entity.entity_id, options, hass);
+  return entityToBubbleCard(entity, options, hass);
 }
-function entityToBubbleCard(entity, options) {
+function lightToCard(entityId, options, hass) {
+  if (!useAdvancedControls(options)) {
+    return {
+      type: "custom:bubble-card",
+      card_type: "button",
+      button_type: "switch",
+      entity: entityId,
+      use_accent_color: false,
+      styles: bubbleLightSurfaceStyles()
+    };
+  }
+  const attributes = hass?.states[entityId]?.attributes ?? {};
+  const colorModes = Array.isArray(attributes.supported_color_modes) ? attributes.supported_color_modes.map(String) : [];
+  const supportsBrightness = attributes.brightness !== void 0 || colorModes.some((mode) => mode !== "onoff");
+  const supportsTemperature = attributes.min_color_temp_kelvin !== void 0 || attributes.max_color_temp_kelvin !== void 0 || colorModes.includes("color_temp");
+  const supportsColor = colorModes.some((mode) => ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(mode));
+  const controls = [];
+  if (supportsBrightness || !hass) {
+    controls.push({
+      entity: entityId,
+      sub_button_type: "slider",
+      icon: "mdi:brightness-6",
+      always_visible: true,
+      show_background: false,
+      light_background: true,
+      hide_when_parent_unavailable: true,
+      fill_width: true
+    });
+  }
+  if (supportsTemperature) {
+    controls.push({
+      entity: entityId,
+      sub_button_type: "slider",
+      icon: "mdi:thermometer",
+      light_slider_type: "white_temp",
+      use_accent_color: true,
+      show_background: false,
+      state_background: false,
+      hide_when_parent_unavailable: true,
+      fill_width: true
+    });
+  }
+  if (supportsColor) {
+    controls.push({
+      entity: entityId,
+      sub_button_type: "slider",
+      icon: "mdi:palette",
+      light_slider_type: "hue",
+      use_accent_color: true,
+      show_background: false,
+      state_background: false,
+      hide_when_parent_unavailable: true,
+      fill_width: true
+    });
+  }
+  return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "switch",
+    entity: entityId,
+    use_accent_color: false,
+    styles: bubbleLightSurfaceStyles(),
+    ...controls.length ? {
+      card_layout: "large",
+      rows: 2,
+      sub_button: {
+        main: [],
+        bottom: [{ buttons_layout: "inline", justify_content: "fill", group: controls.slice(0, 3) }]
+      }
+    } : {}
+  };
+}
+function entityToBubbleCard(entity, options, hass) {
   const domain = getDomain(entity.entity_id);
   const cardType = DOMAIN_CARD_TYPES[domain] || "button";
   if (cardType === "button") {
-    const useSlider = useAdvancedControls(options) && ["light", "fan", "number", "input_number"].includes(domain);
+    const useSlider = useAdvancedControls(options) && ["fan", "number", "input_number"].includes(domain);
     return {
       type: "custom:bubble-card",
       card_type: "button",
@@ -824,31 +948,54 @@ function entityToBubbleCard(entity, options) {
       ...useSlider ? { slider_value_position: "right" } : {}
     };
   }
-  return bubbleDomainCard(cardType, domain, entity.entity_id, options);
+  return bubbleDomainCard(cardType, domain, entity.entity_id, options, hass);
 }
-function bubbleDomainCard(cardType, domain, entityId, options) {
+function bubbleDomainCard(cardType, domain, entityId, options, hass) {
+  const advanced = Boolean(entityId && useAdvancedControls(options));
+  if (domain === "cover" && entityId) {
+    const supportedFeatures = Number(hass?.states[entityId]?.attributes.supported_features ?? 0);
+    const supportsPosition = Boolean(supportedFeatures & 4);
+    const supportsTiltSlider = Boolean(supportedFeatures & 128);
+    const sliders = [];
+    if (advanced && supportsPosition) {
+      sliders.push({ entity: entityId, sub_button_type: "slider", icon: "mdi:arrow-up-down", show_background: false, state_background: false, use_accent_color: true, fill_width: true, hide_when_parent_unavailable: true });
+    }
+    if (advanced && supportsTiltSlider) {
+      sliders.push({ entity: entityId, sub_button_type: "slider", icon: "mdi:angle-acute", cover_slider_type: "tilt_position", show_background: false, state_background: false, use_accent_color: true, fill_width: true, hide_when_parent_unavailable: true });
+    }
+    return {
+      type: "custom:bubble-card",
+      card_type: "cover",
+      entity: entityId,
+      main_buttons_position: "bottom",
+      main_buttons_full_width: true,
+      tilt_buttons: supportsTiltSlider ? "hidden" : "bottom",
+      ...sliders.length ? { card_layout: "large", rows: 2, sub_button: { main: [], bottom: [{ buttons_layout: "inline", justify_content: "fill", group: sliders }] } } : {}
+    };
+  }
   return {
     type: "custom:bubble-card",
     card_type: cardType,
     ...entityId ? { entity: entityId } : {},
-    ...entityId && useAdvancedControls(options) && domain === "climate" ? {
+    ...advanced && domain === "climate" ? {
+      state_color: true,
+      main_buttons_position: "bottom",
+      main_buttons_full_width: true,
       sub_button: {
-        main: [],
-        bottom: [
-          {
-            buttons_layout: "inline",
-            justify_content: "start",
-            group: [
-              {
-                entity: entityId,
-                sub_button_type: "select",
-                select_attribute: "hvac_modes",
-                show_state: true,
-                fill_width: false
-              }
-            ]
-          }
-        ]
+        main: [{
+          buttons_layout: "inline",
+          group: [{
+            entity: entityId,
+            sub_button_type: "select",
+            select_attribute: "hvac_modes",
+            show_state: true,
+            show_arrow: false,
+            show_background: false,
+            fill_width: false,
+            hide_when_parent_unavailable: true
+          }]
+        }],
+        bottom: []
       },
       card_layout: "large",
       rows: 2
@@ -861,7 +1008,7 @@ function useAdvancedControls(options) {
 
 // src/views/area-view.ts
 function buildAreaView(area, entities, devices, hass, options) {
-  const cards = getAreaEntities(area.area_id, entities, devices, hass, options).slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA).map((entity) => entityToCard(entity, options));
+  const cards = getAreaEntities(area.area_id, entities, devices, hass, options).slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA).map((entity) => entityToCard(entity, options, hass));
   return {
     type: "sections",
     max_columns: 3,
@@ -960,6 +1107,7 @@ function smartRoomCard(area, entities, devices, hass, options) {
     name: area.name,
     icon: area.icon || "mdi:home-outline",
     ...primaryEntity ? { entity: primaryEntity.entity_id } : {},
+    ...primaryDomain === "light" ? { use_accent_color: false, styles: bubbleLightSurfaceStyles() } : {},
     card_layout: "large",
     rows: 2,
     show_name: true,
@@ -1012,6 +1160,7 @@ function roomStatusSubButton(entity) {
     show_name: false,
     show_background: true,
     state_background: domain !== "sensor",
+    light_background: domain === "light",
     fill_width: false,
     tap_action: {
       action: domain === "light" ? "toggle" : "more-info"
@@ -1498,7 +1647,7 @@ function buildBatteryCards(options, t) {
 function buildHomeView(areas, entities, devices, hass, options) {
   const t = createTranslator(hass);
   const activeSummaries = getActiveSummaries(areas, entities, devices, hass, options);
-  const overviewCards = buildOverviewCards(hass);
+  const overviewCards = buildOverviewCards(hass, options);
   return {
     type: "sections",
     max_columns: 2,
@@ -1518,44 +1667,44 @@ function buildHomeView(areas, entities, devices, hass, options) {
           ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, t)] : [],
           ...buildRoomsSection(areas, entities, devices, hass, options, t),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, t)),
-          ...buildSummaryPopups(activeSummaries, hass, options, t)
+          ...buildSummaryPopups(activeSummaries, hass, options, t),
+          buildFooter(areas, t("rooms"))
         ]
       }
     ]
   };
 }
-function buildOverviewCards(hass) {
+function buildOverviewCards(hass, options) {
   const weather = findFirstStateEntity(hass, ["weather"]);
-  const vacuums = findStateEntities(hass, ["vacuum"]).slice(0, 2);
+  const mediaPlayer = findLastUsedMediaPlayer(hass);
+  const vacuums = findStateEntities(hass, ["vacuum"]).slice(0, 1);
   return [
-    ...weather ? [
-      fixedHomeCard({
-        type: "weather-forecast",
-        entity: weather,
-        forecast_type: "daily"
-      })
-    ] : [],
-    ...vacuums.map(
-      (entity) => fixedHomeCard({
-        type: "custom:bubble-card",
-        card_type: "button",
-        button_type: "state",
-        entity,
-        sub_button: [
+    ...weather ? [{ type: "weather-forecast", entity: weather, forecast_type: "daily" }] : [],
+    ...mediaPlayer ? [mediaPlayerToCard(mediaPlayer, options)] : [],
+    ...vacuums.map((entity) => ({
+      type: "custom:bubble-card",
+      card_type: "button",
+      button_type: "state",
+      entity,
+      show_state: true,
+      card_layout: "large",
+      rows: 2,
+      button_action: { tap_action: { action: "more-info" } },
+      sub_button: {
+        main: [],
+        bottom: [
           {
-            entity,
-            icon: "mdi:play",
-            tap_action: {
-              action: "perform-action",
-              perform_action: "vacuum.start",
-              target: {
-                entity_id: entity
-              }
-            }
+            buttons_layout: "inline",
+            justify_content: "fill",
+            group: [
+              { entity, icon: "mdi:play", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.start", target: { entity_id: entity } } },
+              { entity, icon: "mdi:pause", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.pause", target: { entity_id: entity } } },
+              { entity, icon: "mdi:home-map-marker", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.return_to_base", target: { entity_id: entity } } }
+            ]
           }
         ]
-      })
-    )
+      }
+    }))
   ];
 }
 function buildRoomsSection(areas, entities, devices, hass, options, t) {
@@ -1580,22 +1729,17 @@ function buildRoomPopup(area, entities, devices, hass, options, t) {
   });
   const cards = [];
   groups.forEach((group) => {
-    if (!group.entities.length) {
-      return;
-    }
+    if (!group.entities.length) return;
     cards.push(bubbleSeparator(t(group.titleKey), group.icon));
     cards.push({
       type: "grid",
       square: false,
       columns: group.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options))
+      cards: group.entities.map((entity) => entityToCard(entity, options, hass))
     });
   });
   if (!cards.length) {
-    cards.push({
-      type: "markdown",
-      content: t("noEntities")
-    });
+    cards.push({ type: "markdown", content: t("noEntities") });
   }
   return bubblePopup({
     hash: getRoomHash(area),
