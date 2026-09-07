@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,6 +18,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Commit generated HACS bundle
+        if: github.event_name == 'push'
+        run: |
+          git add dist/bubble-card-dashboard-strategy.js
+          if git diff --cached --quiet; then
+            echo "Generated bundle is already synchronized."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: sync generated dashboard bundle"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
       - uses: actions/upload-artifact@v4
         with:
           name: bubble-card-dashboard-strategy
