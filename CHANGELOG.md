@@ -2,6 +2,27 @@
 
 All notable changes to Bubble Card Dashboard Strategy are documented here.
 
+## [0.24.0] - 2026-09-08
+
+### Added
+
+- Capability-aware room popup layout that chooses compact two-column or wide one-column presentation per entity instead of forcing one grid size on an entire domain group
+- Full-width mobile Bubble Card popups for more usable control space on phones
+
+### Changed
+
+- Rich light cards with brightness, colour temperature, or colour capabilities now use the full popup width
+- Brightness remains the primary light slider while colour temperature and colour are compact secondary controls, preventing three sliders from being squeezed into one row
+- Climate, media, covers, alarms, locks, selects, vacuums, and other interaction-heavy controls use wide presentation; simple switches, scenes, scripts, and buttons remain compact
+- Home room cards show at most two secondary status chips so temperature, contact, presence, and light states no longer overflow half-width tiles
+- Home overview cards no longer share a forced two-column grid; active media and vacuum controls receive the full available width
+- Home media appears only while playing or paused, and vacuum controls appear only while the vacuum is active
+
+### Fixed
+
+- Prevented room light controls and long entity names from being compressed into unusable half-width cards on mobile
+- Prevented Home room status sub-buttons from being clipped at narrow viewport widths
+
 ## [0.23.0] - 2026-09-07
 
 ### Added
@@ -66,3 +87,4 @@ All notable changes to Bubble Card Dashboard Strategy are documented here.
 [0.22.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.0
 [0.22.1]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.1
 [0.23.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.23.0
+[0.24.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.24.0
