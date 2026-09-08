@@ -1146,11 +1146,11 @@ function findRoomStatusEntities(entities, hass) {
   });
   const candidates = [
     findByDeviceClass("sensor", ["temperature"]),
-    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
+    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     entities.find((entity) => getDomain(entity.entity_id) === "light")
   ];
-  return candidates.filter((entity) => Boolean(entity)).slice(0, 4);
+  return candidates.filter((entity) => Boolean(entity)).slice(0, 2);
 }
 function roomStatusSubButton(entity) {
   const domain = getDomain(entity.entity_id);
