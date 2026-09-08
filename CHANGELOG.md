@@ -2,6 +2,24 @@
 
 All notable changes to Bubble Card Dashboard Strategy are documented here.
 
+## [0.23.0] - 2026-09-07
+
+### Added
+
+- Native Home Assistant Community dashboards registration for Home Assistant 2026.5 and newer via `window.customStrategies`
+- Friendly dashboard name, description, and documentation URL for Home Assistant's dashboard picker
+- Native dashboard creation flow without requiring users to paste strategy YAML manually
+
+### Changed
+
+- The compiled HACS bundle is synchronized automatically during the build workflow
+- Dashboard UX upgraded with capability-aware controls, dynamic light surfaces, improved room/media/vacuum experiences, and hardened build/release workflows
+
+### Compatibility
+
+- Existing dashboards using `strategy.type: custom:bubble-card-dashboard` continue to work unchanged
+- The strategy custom element remains `ll-strategy-dashboard-bubble-card-dashboard`
+
 ## [0.22.1] - 2026-07-15
 
 ### Changed
@@ -47,3 +65,4 @@ All notable changes to Bubble Card Dashboard Strategy are documented here.
 
 [0.22.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.0
 [0.22.1]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.1
+[0.23.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.23.0
