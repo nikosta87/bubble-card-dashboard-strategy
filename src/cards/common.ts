@@ -20,6 +20,7 @@ export function bubblePopup(config: {
     popup_style: "bubble",
     performance_mode: "performance",
     with_bottom_offset: true,
+    full_width_on_mobile: true,
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,

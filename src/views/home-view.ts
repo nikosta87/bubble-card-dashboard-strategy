@@ -9,7 +9,12 @@ import type {
 } from "../types";
 import { bubblePopup, bubbleSeparator, buildFooter } from "../cards/common";
 import { mediaPlayerToCard } from "../cards/media-player";
-import { entityToCard, groupRoomEntities } from "../cards/entity-cards";
+import {
+  entityToCard,
+  getEntityPresentation,
+  groupRoomEntities,
+  type EntityPresentation,
+} from "../cards/entity-cards";
 import { buildTopNavigation } from "../cards/navigation";
 import { buildSmartRoomCards } from "../cards/room-cards";
 import { createTranslator, type Translator } from "../i18n";
@@ -41,16 +46,7 @@ export function buildHomeView(
         type: "grid",
         cards: [
           buildTopNavigation(hass, options),
-          ...(overviewCards.length
-            ? [
-                {
-                  type: "grid",
-                  square: false,
-                  columns: 2,
-                  cards: overviewCards,
-                },
-              ]
-            : []),
+          ...overviewCards,
           ...(activeSummaries.length ? [buildSummaryNavigation(activeSummaries, t)] : []),
           ...buildRoomsSection(areas, entities, devices, hass, options, t),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, t)),
@@ -62,38 +58,50 @@ export function buildHomeView(
   };
 }
 
+/**
+ * Home is a glanceable surface, not a control catalogue. Rich overview cards
+ * therefore use the full available width and only appear when they are useful.
+ */
 function buildOverviewCards(hass: HomeAssistant, options: StrategyConfig): LovelaceCard[] {
   const weather = findFirstStateEntity(hass, ["weather"]);
-  const mediaPlayer = findLastUsedMediaPlayer(hass);
-  const vacuums = findStateEntities(hass, ["vacuum"]).slice(0, 1);
+  const candidateMediaPlayer = findLastUsedMediaPlayer(hass);
+  const mediaPlayer = candidateMediaPlayer && ["playing", "paused"].includes(hass.states[candidateMediaPlayer]?.state)
+    ? candidateMediaPlayer
+    : undefined;
+  const activeVacuum = findStateEntities(hass, ["vacuum"]).find((entity) => {
+    const state = hass.states[entity]?.state;
+    return state && !["docked", "idle", "off", "unavailable", "unknown"].includes(state);
+  });
 
   return [
     ...(weather ? [{ type: "weather-forecast", entity: weather, forecast_type: "daily" }] : []),
     ...(mediaPlayer ? [mediaPlayerToCard(mediaPlayer, options)] : []),
-    ...vacuums.map((entity) => ({
-      type: "custom:bubble-card",
-      card_type: "button",
-      button_type: "state",
-      entity,
-      show_state: true,
-      card_layout: "large",
-      rows: 2,
-      button_action: { tap_action: { action: "more-info" } },
-      sub_button: {
-        main: [],
-        bottom: [
-          {
-            buttons_layout: "inline",
-            justify_content: "fill",
-            group: [
-              { entity, icon: "mdi:play", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.start", target: { entity_id: entity } } },
-              { entity, icon: "mdi:pause", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.pause", target: { entity_id: entity } } },
-              { entity, icon: "mdi:home-map-marker", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.return_to_base", target: { entity_id: entity } } },
+    ...(activeVacuum
+      ? [{
+          type: "custom:bubble-card",
+          card_type: "button",
+          button_type: "state",
+          entity: activeVacuum,
+          show_state: true,
+          card_layout: "large",
+          rows: 2,
+          button_action: { tap_action: { action: "more-info" } },
+          sub_button: {
+            main: [],
+            bottom: [
+              {
+                buttons_layout: "inline",
+                justify_content: "fill",
+                group: [
+                  { entity: activeVacuum, icon: "mdi:play", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.start", target: { entity_id: activeVacuum } } },
+                  { entity: activeVacuum, icon: "mdi:pause", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.pause", target: { entity_id: activeVacuum } } },
+                  { entity: activeVacuum, icon: "mdi:home-map-marker", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.return_to_base", target: { entity_id: activeVacuum } } },
+                ],
+              },
             ],
           },
-        ],
-      },
-    })),
+        }]
+      : []),
   ];
 }
 
@@ -138,12 +146,7 @@ function buildRoomPopup(
     if (!group.entities.length) return;
 
     cards.push(bubbleSeparator(t(group.titleKey), group.icon));
-    cards.push({
-      type: "grid",
-      square: false,
-      columns: group.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options, hass)),
-    });
+    cards.push(...buildResponsiveEntityGrids(group.entities, options, hass));
   });
 
   if (!cards.length) {
@@ -156,4 +159,37 @@ function buildRoomPopup(
     icon: area.icon || "mdi:home-outline",
     cards,
   });
+}
+
+/**
+ * Keep entities in their existing order while switching between one-column
+ * rich controls and two-column compact actions. Consecutive cards with the
+ * same presentation are grouped into a grid, avoiding a one-size-fits-all
+ * domain layout.
+ */
+function buildResponsiveEntityGrids(
+  entities: HassEntity[],
+  options: StrategyConfig,
+  hass: HomeAssistant,
+): LovelaceCard[] {
+  const runs: Array<{ presentation: EntityPresentation; cards: LovelaceCard[] }> = [];
+
+  entities.forEach((entity) => {
+    const presentation = getEntityPresentation(entity, options, hass);
+    const card = entityToCard(entity, options, hass);
+    const current = runs[runs.length - 1];
+
+    if (current?.presentation === presentation) {
+      current.cards.push(card);
+    } else {
+      runs.push({ presentation, cards: [card] });
+    }
+  });
+
+  return runs.map((run) => ({
+    type: "grid",
+    square: false,
+    columns: run.presentation === "wide" ? 1 : 2,
+    cards: run.cards,
+  }));
 }

@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.23.0";
+var VERSION = "0.24.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
 var DEFAULT_ROOM_ORDER = "alphabetical";
@@ -742,6 +742,7 @@ function bubblePopup(config) {
     popup_style: "bubble",
     performance_mode: "performance",
     with_bottom_offset: true,
+    full_width_on_mobile: true,
     width_desktop: DESIGN.popup.widthDesktop,
     bg_opacity: DESIGN.popup.bgOpacity,
     bg_blur: DESIGN.popup.bgBlur,
@@ -830,17 +831,35 @@ function mediaPlayerToCard(entityId, options) {
 // src/cards/entity-cards.ts
 function groupRoomEntities(entities) {
   const groupDefinitions = [
-    { titleKey: "lights", icon: "mdi:lightbulb-group", domains: ["light"], columns: 2 },
-    { titleKey: "climate", icon: "mdi:thermostat", domains: ["climate", "fan", "humidifier"], columns: 1 },
-    { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"], columns: 1 },
-    { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"], columns: 1 },
-    { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"], columns: 2 },
-    { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"], columns: 2 }
+    { titleKey: "lights", icon: "mdi:lightbulb-group", domains: ["light"] },
+    { titleKey: "climate", icon: "mdi:thermostat", domains: ["climate", "fan", "humidifier"] },
+    { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"] },
+    { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"] },
+    { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"] },
+    { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"] }
   ];
   return groupDefinitions.map((definition) => ({
     ...definition,
     entities: entities.filter((entity) => definition.domains.includes(getDomain(entity.entity_id)))
   }));
+}
+function getEntityPresentation(entity, options, hass) {
+  const domain = getDomain(entity.entity_id);
+  if (["media_player", "climate", "cover", "vacuum", "alarm_control_panel", "lock"].includes(domain)) {
+    return "wide";
+  }
+  if (["select", "input_select"].includes(domain)) return "wide";
+  if (["number", "input_number", "fan", "humidifier"].includes(domain)) {
+    return useAdvancedControls(options) ? "wide" : "compact";
+  }
+  if (domain === "light") {
+    if (!useAdvancedControls(options)) return "compact";
+    const attributes = hass?.states[entity.entity_id]?.attributes ?? {};
+    const colorModes = Array.isArray(attributes.supported_color_modes) ? attributes.supported_color_modes.map(String) : [];
+    const hasRichLightControls = attributes.brightness !== void 0 || attributes.min_color_temp_kelvin !== void 0 || attributes.max_color_temp_kelvin !== void 0 || colorModes.some((mode) => mode !== "onoff");
+    return hasRichLightControls || !hass ? "wide" : "compact";
+  }
+  return "compact";
 }
 function entityCardTemplate(domain, options = {}) {
   if (domain === "media_player") return { type: "custom:bubble-card", card_type: "media-player" };
@@ -895,27 +914,25 @@ function lightToCard(entityId, options, hass) {
   if (supportsTemperature) {
     controls.push({
       entity: entityId,
-      sub_button_type: "slider",
       icon: "mdi:thermometer",
-      light_slider_type: "white_temp",
-      use_accent_color: true,
-      show_background: false,
+      show_background: true,
       state_background: false,
+      light_background: true,
+      fill_width: false,
       hide_when_parent_unavailable: true,
-      fill_width: true
+      tap_action: { action: "more-info" }
     });
   }
   if (supportsColor) {
     controls.push({
       entity: entityId,
-      sub_button_type: "slider",
       icon: "mdi:palette",
-      light_slider_type: "hue",
-      use_accent_color: true,
-      show_background: false,
+      show_background: true,
       state_background: false,
+      light_background: true,
+      fill_width: false,
       hide_when_parent_unavailable: true,
-      fill_width: true
+      tap_action: { action: "more-info" }
     });
   }
   return {
@@ -1146,11 +1163,11 @@ function findRoomStatusEntities(entities, hass) {
   });
   const candidates = [
     findByDeviceClass("sensor", ["temperature"]),
-    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
+    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     entities.find((entity) => getDomain(entity.entity_id) === "light")
   ];
-  return candidates.filter((entity) => Boolean(entity)).slice(0, 4);
+  return candidates.filter((entity) => Boolean(entity)).slice(0, 2);
 }
 function roomStatusSubButton(entity) {
   const domain = getDomain(entity.entity_id);
@@ -1656,14 +1673,7 @@ function buildHomeView(areas, entities, devices, hass, options) {
         type: "grid",
         cards: [
           buildTopNavigation(hass, options),
-          ...overviewCards.length ? [
-            {
-              type: "grid",
-              square: false,
-              columns: 2,
-              cards: overviewCards
-            }
-          ] : [],
+          ...overviewCards,
           ...activeSummaries.length ? [buildSummaryNavigation(activeSummaries, t)] : [],
           ...buildRoomsSection(areas, entities, devices, hass, options, t),
           ...areas.map((area) => buildRoomPopup(area, entities, devices, hass, options, t)),
@@ -1676,16 +1686,20 @@ function buildHomeView(areas, entities, devices, hass, options) {
 }
 function buildOverviewCards(hass, options) {
   const weather = findFirstStateEntity(hass, ["weather"]);
-  const mediaPlayer = findLastUsedMediaPlayer(hass);
-  const vacuums = findStateEntities(hass, ["vacuum"]).slice(0, 1);
+  const candidateMediaPlayer = findLastUsedMediaPlayer(hass);
+  const mediaPlayer = candidateMediaPlayer && ["playing", "paused"].includes(hass.states[candidateMediaPlayer]?.state) ? candidateMediaPlayer : void 0;
+  const activeVacuum = findStateEntities(hass, ["vacuum"]).find((entity) => {
+    const state = hass.states[entity]?.state;
+    return state && !["docked", "idle", "off", "unavailable", "unknown"].includes(state);
+  });
   return [
     ...weather ? [{ type: "weather-forecast", entity: weather, forecast_type: "daily" }] : [],
     ...mediaPlayer ? [mediaPlayerToCard(mediaPlayer, options)] : [],
-    ...vacuums.map((entity) => ({
+    ...activeVacuum ? [{
       type: "custom:bubble-card",
       card_type: "button",
       button_type: "state",
-      entity,
+      entity: activeVacuum,
       show_state: true,
       card_layout: "large",
       rows: 2,
@@ -1697,14 +1711,14 @@ function buildOverviewCards(hass, options) {
             buttons_layout: "inline",
             justify_content: "fill",
             group: [
-              { entity, icon: "mdi:play", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.start", target: { entity_id: entity } } },
-              { entity, icon: "mdi:pause", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.pause", target: { entity_id: entity } } },
-              { entity, icon: "mdi:home-map-marker", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.return_to_base", target: { entity_id: entity } } }
+              { entity: activeVacuum, icon: "mdi:play", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.start", target: { entity_id: activeVacuum } } },
+              { entity: activeVacuum, icon: "mdi:pause", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.pause", target: { entity_id: activeVacuum } } },
+              { entity: activeVacuum, icon: "mdi:home-map-marker", show_background: false, fill_width: true, tap_action: { action: "perform-action", perform_action: "vacuum.return_to_base", target: { entity_id: activeVacuum } } }
             ]
           }
         ]
       }
-    }))
+    }] : []
   ];
 }
 function buildRoomsSection(areas, entities, devices, hass, options, t) {
@@ -1731,12 +1745,7 @@ function buildRoomPopup(area, entities, devices, hass, options, t) {
   groups.forEach((group) => {
     if (!group.entities.length) return;
     cards.push(bubbleSeparator(t(group.titleKey), group.icon));
-    cards.push({
-      type: "grid",
-      square: false,
-      columns: group.columns,
-      cards: group.entities.map((entity) => entityToCard(entity, options, hass))
-    });
+    cards.push(...buildResponsiveEntityGrids(group.entities, options, hass));
   });
   if (!cards.length) {
     cards.push({ type: "markdown", content: t("noEntities") });
@@ -1747,6 +1756,25 @@ function buildRoomPopup(area, entities, devices, hass, options, t) {
     icon: area.icon || "mdi:home-outline",
     cards
   });
+}
+function buildResponsiveEntityGrids(entities, options, hass) {
+  const runs = [];
+  entities.forEach((entity) => {
+    const presentation = getEntityPresentation(entity, options, hass);
+    const card = entityToCard(entity, options, hass);
+    const current = runs[runs.length - 1];
+    if (current?.presentation === presentation) {
+      current.cards.push(card);
+    } else {
+      runs.push({ presentation, cards: [card] });
+    }
+  });
+  return runs.map((run) => ({
+    type: "grid",
+    square: false,
+    columns: run.presentation === "wide" ? 1 : 2,
+    cards: run.cards
+  }));
 }
 
 // src/strategies.ts
