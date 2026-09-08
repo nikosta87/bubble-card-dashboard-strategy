@@ -4,7 +4,7 @@ export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 export const VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 export const EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-export const VERSION = "0.23.0";
+export const VERSION = "0.24.0";
 
 export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
