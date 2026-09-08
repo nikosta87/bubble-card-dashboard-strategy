@@ -9,24 +9,65 @@ type RoomEntityGroup = {
   titleKey: TranslationKey;
   icon: string;
   domains: string[];
-  columns: number;
   entities: HassEntity[];
 };
 
+export type EntityPresentation = "compact" | "wide";
+
 export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
   const groupDefinitions: Omit<RoomEntityGroup, "entities">[] = [
-    { titleKey: "lights", icon: "mdi:lightbulb-group", domains: ["light"], columns: 2 },
-    { titleKey: "climate", icon: "mdi:thermostat", domains: ["climate", "fan", "humidifier"], columns: 1 },
-    { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"], columns: 1 },
-    { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"], columns: 1 },
-    { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"], columns: 2 },
-    { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"], columns: 2 },
+    { titleKey: "lights", icon: "mdi:lightbulb-group", domains: ["light"] },
+    { titleKey: "climate", icon: "mdi:thermostat", domains: ["climate", "fan", "humidifier"] },
+    { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"] },
+    { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"] },
+    { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"] },
+    { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"] },
   ];
 
   return groupDefinitions.map((definition) => ({
     ...definition,
     entities: entities.filter((entity) => definition.domains.includes(getDomain(entity.entity_id))),
   }));
+}
+
+/**
+ * Decide how much horizontal space an entity needs in a room popup. The choice
+ * is based on interaction density rather than the section/domain alone, which
+ * keeps simple actions compact while preserving readable controls for sliders,
+ * media and other rich cards.
+ */
+export function getEntityPresentation(
+  entity: HassEntity,
+  options: StrategyConfig,
+  hass?: HomeAssistant,
+): EntityPresentation {
+  const domain = getDomain(entity.entity_id);
+
+  if (["media_player", "climate", "cover", "vacuum", "alarm_control_panel", "lock"].includes(domain)) {
+    return "wide";
+  }
+
+  if (["select", "input_select"].includes(domain)) return "wide";
+
+  if (["number", "input_number", "fan", "humidifier"].includes(domain)) {
+    return useAdvancedControls(options) ? "wide" : "compact";
+  }
+
+  if (domain === "light") {
+    if (!useAdvancedControls(options)) return "compact";
+    const attributes = hass?.states[entity.entity_id]?.attributes ?? {};
+    const colorModes = Array.isArray(attributes.supported_color_modes)
+      ? attributes.supported_color_modes.map(String)
+      : [];
+    const hasRichLightControls =
+      attributes.brightness !== undefined ||
+      attributes.min_color_temp_kelvin !== undefined ||
+      attributes.max_color_temp_kelvin !== undefined ||
+      colorModes.some((mode) => mode !== "onoff");
+    return hasRichLightControls || !hass ? "wide" : "compact";
+  }
+
+  return "compact";
 }
 
 /** auto-entities injects the matched entity into this template at runtime. */
@@ -91,30 +132,32 @@ function lightToCard(entityId: string, options: StrategyConfig, hass?: HomeAssis
       fill_width: true,
     });
   }
+
+  // Temperature and colour are secondary controls. Keeping them as compact
+  // touch targets leaves the brightness slider readable instead of squeezing
+  // three full-width sliders into the same mobile row.
   if (supportsTemperature) {
     controls.push({
       entity: entityId,
-      sub_button_type: "slider",
       icon: "mdi:thermometer",
-      light_slider_type: "white_temp",
-      use_accent_color: true,
-      show_background: false,
+      show_background: true,
       state_background: false,
+      light_background: true,
+      fill_width: false,
       hide_when_parent_unavailable: true,
-      fill_width: true,
+      tap_action: { action: "more-info" },
     });
   }
   if (supportsColor) {
     controls.push({
       entity: entityId,
-      sub_button_type: "slider",
       icon: "mdi:palette",
-      light_slider_type: "hue",
-      use_accent_color: true,
-      show_background: false,
+      show_background: true,
       state_background: false,
+      light_background: true,
+      fill_width: false,
       hide_when_parent_unavailable: true,
-      fill_width: true,
+      tap_action: { action: "more-info" },
     });
   }
 
