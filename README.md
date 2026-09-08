@@ -7,6 +7,7 @@ This project is built for people who want a clean Bubble Card dashboard without 
 ## Features
 
 - Automatic dashboard generation from Home Assistant areas
+- Native Home Assistant Community dashboards registration (Home Assistant 2026.5+)
 - One app-like Home view
 - Top navigation bar using Bubble Card sub-buttons
 - Smart room cards with automatically selected temperature, presence, contact, and light status controls
@@ -20,6 +21,7 @@ This project is built for people who want a clean Bubble Card dashboard without 
 ## Requirements
 
 - Home Assistant with dashboard strategy support
+- Home Assistant 2026.5 or newer for native Community dashboards discovery
 - [Bubble Card](https://github.com/Clooos/Bubble-Card) 3.2.0 or newer installed
 - [auto-entities](https://github.com/thomasloven/lovelace-auto-entities) installed for the status-grouped summaries (Lights, Security, Batteries)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod) installed if you want all Home overview cards to use the same fixed height
@@ -80,21 +82,47 @@ JavaScript Module
 
 ## Create A Dashboard
 
+### Home Assistant 2026.5+
+
+Once the strategy resource is loaded, Home Assistant discovers it natively through `window.customStrategies`.
+
 1. Go to **Settings** → **Dashboards**.
-2. Create a new dashboard.
-3. Open the dashboard.
-4. Enter edit mode.
-5. Open the three-dot menu and select **Raw configuration editor**.
-6. Add:
+2. Select **Add dashboard**.
+3. Under **Community dashboards**, choose **Bubble Card Dashboard**.
+4. Complete the dashboard details and create it.
 
-   ```yaml
-   strategy:
-     type: custom:bubble-card-dashboard
-   ```
+No YAML is required for this flow.
 
-7. Save the dashboard.
+### Compatibility / manual fallback
+
+If the Community dashboards entry is not available, create a blank dashboard and use the raw configuration editor with:
+
+```yaml
+strategy:
+  type: custom:bubble-card-dashboard
+```
+
+This fallback also remains valid for existing installations.
 
 ## Troubleshooting
+
+### Bubble Card Dashboard is missing from Community dashboards
+
+The Community dashboards picker requires Home Assistant 2026.5 or newer and the strategy JavaScript resource must already be loaded.
+
+Check **Settings** → **Dashboards** → three-dot menu → **Resources** and make sure this resource exists:
+
+```text
+/hacsfiles/bubble-card-dashboard-strategy/bubble-card-dashboard-strategy.js
+```
+
+The resource type must be:
+
+```text
+JavaScript Module
+```
+
+Then refresh the browser. If you installed manually, use your `/local/...` path instead.
 
 ### Timeout waiting for strategy element
 
