@@ -76,14 +76,17 @@ function findRoomStatusEntities(entities: HassEntity[], hass: HomeAssistant): Ha
       return getDomain(entity.entity_id) === domain && deviceClasses.includes(String(state?.attributes.device_class || ""));
     });
 
+  // Half-width room cards deliberately show at most two secondary facts. More
+  // controls belong in the room popup, where they have enough space to remain
+  // readable and touch friendly on mobile.
   const candidates = [
     findByDeviceClass("sensor", ["temperature"]),
-    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
+    findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
     entities.find((entity) => getDomain(entity.entity_id) === "light"),
   ];
 
-  return candidates.filter((entity): entity is HassEntity => Boolean(entity)).slice(0, 4);
+  return candidates.filter((entity): entity is HassEntity => Boolean(entity)).slice(0, 2);
 }
 
 function roomStatusSubButton(entity: HassEntity): LovelaceCard {
