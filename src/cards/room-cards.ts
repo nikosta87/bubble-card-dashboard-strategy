@@ -1,91 +1,58 @@
-import { bubbleLightSurfaceStyles } from "../design";
+import { bubbleRoomAmbientStyles } from "../design";
 import type { HassArea, HassDevice, HassEntity, HomeAssistant, LovelaceCard, StrategyConfig } from "../types";
 import { getDomain, getRoomHash, getVisibleAreaEntities } from "../utils/entities";
 
 export function buildSmartRoomCards(
-  areas: HassArea[],
-  entities: HassEntity[],
-  devices: HassDevice[],
-  hass: HomeAssistant,
-  options: StrategyConfig,
+  areas: HassArea[], entities: HassEntity[], devices: HassDevice[], hass: HomeAssistant, options: StrategyConfig,
 ): LovelaceCard[] {
   return areas.map((area) => smartRoomCard(area, entities, devices, hass, options));
 }
 
 function smartRoomCard(
-  area: HassArea,
-  entities: HassEntity[],
-  devices: HassDevice[],
-  hass: HomeAssistant,
-  options: StrategyConfig,
+  area: HassArea, entities: HassEntity[], devices: HassDevice[], hass: HomeAssistant, options: StrategyConfig,
 ): LovelaceCard {
   const areaEntities = getVisibleAreaEntities(area.area_id, entities, devices, hass, options);
-  const primaryEntity = findRoomPrimaryEntity(areaEntities);
-  const statusEntities = findRoomStatusEntities(areaEntities, hass).filter(
-    (entity) => entity.entity_id !== primaryEntity?.entity_id,
-  );
-  const primaryDomain = primaryEntity ? getDomain(primaryEntity.entity_id) : "";
+  const lightIds = areaEntities.filter((entity) => getDomain(entity.entity_id) === "light").map((entity) => entity.entity_id);
+  const statusEntities = findRoomStatusEntities(areaEntities, hass);
+  const ambient = options.ambient_room_colors ?? true;
+  const intensity = options.visual_intensity ?? "balanced";
 
+  // Room tiles are navigation surfaces, not miniature device cards. They remain
+  // stable when the first entity in an area changes and expose only two useful
+  // facts. Device interaction belongs in the room popup.
   return {
     type: "custom:bubble-card",
     card_type: "button",
-    button_type: primaryEntity ? (["light", "switch"].includes(primaryDomain) ? "switch" : "state") : "name",
+    button_type: "name",
     name: area.name,
     icon: area.icon || "mdi:home-outline",
-    ...(primaryEntity ? { entity: primaryEntity.entity_id } : {}),
-    ...(primaryDomain === "light" ? { use_accent_color: false, styles: bubbleLightSurfaceStyles() } : {}),
+    ...(ambient && lightIds.length ? { styles: bubbleRoomAmbientStyles(lightIds, intensity) } : {}),
     card_layout: "large",
     rows: 2,
     show_name: true,
     show_state: false,
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: getRoomHash(area),
+    button_action: { tap_action: { action: "navigate", navigation_path: getRoomHash(area) } },
+    ...(statusEntities.length ? {
+      sub_button: {
+        main: [],
+        bottom: [{ buttons_layout: "inline", justify_content: "start", group: statusEntities.map(roomStatusSubButton) }],
       },
-    },
-    ...(statusEntities.length
-      ? {
-          sub_button: {
-            main: [],
-            bottom: [
-              {
-                buttons_layout: "inline",
-                justify_content: "start",
-                group: statusEntities.map(roomStatusSubButton),
-              },
-            ],
-          },
-        }
-      : {}),
+    } : {}),
   };
 }
 
-function findRoomPrimaryEntity(entities: HassEntity[]): HassEntity | undefined {
-  for (const domain of ["light", "switch", "climate", "cover"]) {
-    const entity = entities.find((candidate) => getDomain(candidate.entity_id) === domain);
-    if (entity) return entity;
-  }
-  return undefined;
-}
-
 function findRoomStatusEntities(entities: HassEntity[], hass: HomeAssistant): HassEntity[] {
-  const findByDeviceClass = (domain: string, deviceClasses: string[]) =>
-    entities.find((entity) => {
-      const state = hass.states[entity.entity_id];
-      return getDomain(entity.entity_id) === domain && deviceClasses.includes(String(state?.attributes.device_class || ""));
-    });
-
-  // Half-width room cards deliberately show at most two secondary facts. More
-  // controls belong in the room popup, where they have enough space to remain
-  // readable and touch friendly on mobile.
+  const findByDeviceClass = (domain: string, deviceClasses: string[]) => entities.find((entity) => {
+    const state = hass.states[entity.entity_id];
+    return getDomain(entity.entity_id) === domain && deviceClasses.includes(String(state?.attributes.device_class || ""));
+  });
+  const lights = entities.filter((entity) => getDomain(entity.entity_id) === "light");
   const candidates = [
     findByDeviceClass("sensor", ["temperature"]),
     findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
     findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
-    entities.find((entity) => getDomain(entity.entity_id) === "light"),
+    lights[0],
   ];
-
   return candidates.filter((entity): entity is HassEntity => Boolean(entity)).slice(0, 2);
 }
 
@@ -99,8 +66,6 @@ function roomStatusSubButton(entity: HassEntity): LovelaceCard {
     state_background: domain !== "sensor",
     light_background: domain === "light",
     fill_width: false,
-    tap_action: {
-      action: domain === "light" ? "toggle" : "more-info",
-    },
+    tap_action: { action: domain === "light" ? "toggle" : "more-info" },
   };
 }
