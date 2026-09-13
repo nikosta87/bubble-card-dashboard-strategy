@@ -223,8 +223,12 @@ var BOOLEAN_FIELDS = /* @__PURE__ */ new Set([
   "show_climate_summary",
   "show_battery_summary",
   "show_alarm_controls",
-  "hide_mobile_app_batteries"
+  "hide_mobile_app_batteries",
+  "ambient_room_colors",
+  "artwork_media_surface",
+  "contextual_home_cards"
 ]);
+var STORAGE_KEY = "bcds-editor-expanded-panels";
 var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   _config = {};
   _hass;
@@ -232,12 +236,11 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   _areasLoaded = false;
   _areasLoading = false;
   _rendered = false;
+  _expanded = loadExpandedPanels();
   set hass(hass) {
     this._hass = hass;
     this.loadAreas();
-    if (!this._rendered) {
-      this.render();
-    }
+    if (!this._rendered) this.render();
   }
   setConfig(config) {
     this._config = {
@@ -252,9 +255,7 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
     this.render();
   }
   async loadAreas() {
-    if (!this._hass || this._areasLoaded || this._areasLoading) {
-      return;
-    }
+    if (!this._hass || this._areasLoaded || this._areasLoading) return;
     this._areasLoading = true;
     try {
       const { areas, devices, entities } = await getRegistries(this._hass);
@@ -269,307 +270,111 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   orderedAreasForDisplay() {
     return sortAreas(this._areas, this._config.room_order ?? DEFAULT_ROOM_ORDER, this._config.custom_room_order ?? []);
   }
+  panel(key, icon, title, description, body) {
+    const expanded = this._expanded.has(key);
+    return `<section class="panel ${expanded ? "expanded" : "collapsed"}">
+      <button class="panel-header" type="button" data-panel="${key}" aria-expanded="${expanded}">
+        <ha-icon icon="${icon}"></ha-icon>
+        <span class="panel-heading"><strong>${title}</strong><small>${description}</small></span>
+        <ha-icon class="chevron" icon="mdi:chevron-down"></ha-icon>
+      </button>
+      ${expanded ? `<div class="panel-body">${body}</div>` : ""}
+    </section>`;
+  }
+  field(label, control, hint = "") {
+    return `<div class="field"><label>${label}</label><div class="control">${control}${hint ? `<div class="hint">${hint}</div>` : ""}</div></div>`;
+  }
+  toggle(field, checked) {
+    return `<label class="switch"><input data-field="${field}" type="checkbox" ${checked ? "checked" : ""}><span></span></label>`;
+  }
   render() {
     this._rendered = true;
     const maxEntities = this._config.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA;
-    const enableAdvancedControls = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
+    const advanced = this._config.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
     const themeGrouping = this._config.theme_grouping ?? "auto";
     const roomOrder = this._config.room_order ?? DEFAULT_ROOM_ORDER;
-    const showLightSummary = this._config.show_light_summary ?? true;
-    const showSecuritySummary = this._config.show_security_summary ?? true;
-    const showClimateSummary = this._config.show_climate_summary ?? true;
-    const showBatterySummary = this._config.show_battery_summary ?? true;
-    const hideMobileBatteries = this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES;
+    const hero = this._config.home_hero_mode ?? "adaptive";
+    const intensity = this._config.visual_intensity ?? "balanced";
+    const ambient = this._config.ambient_room_colors ?? true;
+    const artwork = this._config.artwork_media_surface ?? true;
+    const contextual = this._config.contextual_home_cards ?? true;
     const batteryCritical = this._config.battery_critical_below ?? DEFAULT_BATTERY_CRITICAL_BELOW;
     const batteryLow = this._config.battery_low_below ?? DEFAULT_BATTERY_LOW_BELOW;
-    const showAlarmControls = this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS;
-    this.innerHTML = `
-      <style>
-        :host {
-          display: block;
-          color: var(--primary-text-color);
-        }
-
-        .section {
-          margin: 0 0 28px;
-        }
-
-        .section-title {
-          font-weight: 600;
-          margin: 0 0 14px;
-        }
-
-        .field {
-          display: grid;
-          grid-template-columns: minmax(150px, 220px) 1fr;
-          gap: 16px;
-          align-items: center;
-          margin: 16px 0 8px;
-        }
-
-        label {
-          font-weight: 500;
-        }
-
-        input,
-        select {
-          width: 100%;
-          box-sizing: border-box;
-          border: 1px solid var(--divider-color);
-          border-radius: 6px;
-          background: var(--secondary-background-color);
-          color: var(--primary-text-color);
-          font: inherit;
-          padding: 10px 12px;
-        }
-
-        input[type="checkbox"],
-        input[type="radio"] {
-          width: auto;
-        }
-
-        .radio-group {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .radio-group label {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-weight: 400;
-        }
-
-        .hint {
-          grid-column: 2;
-          color: var(--secondary-text-color);
-          font-size: 0.9em;
-          line-height: 1.4;
-          margin-top: 2px;
-        }
-
-        .room-list {
-          margin-top: 12px;
-          border: 1px solid var(--divider-color);
-          border-radius: 6px;
-          overflow: hidden;
-        }
-
-        .room-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 12px;
-          border-bottom: 1px solid var(--divider-color);
-        }
-
-        .room-row:last-child {
-          border-bottom: none;
-        }
-
-        .room-row input[type="checkbox"] {
-          width: auto;
-          margin: 0;
-        }
-
-        .room-name {
-          flex: 1;
-        }
-
-        .room-actions {
-          display: flex;
-          gap: 6px;
-        }
-
-        .room-actions button {
-          width: 32px;
-          height: 32px;
-          padding: 0;
-          border: 1px solid var(--divider-color);
-          border-radius: 6px;
-          background: var(--secondary-background-color);
-          color: var(--primary-text-color);
-          font: inherit;
-          cursor: pointer;
-        }
-
-        .room-actions button[disabled] {
-          opacity: 0.4;
-          cursor: default;
-        }
-
-        .room-empty {
-          padding: 12px;
-          color: var(--secondary-text-color);
-        }
-
-        @media (max-width: 640px) {
-          .field {
-            grid-template-columns: 1fr;
-            gap: 8px;
-          }
-
-          .hint {
-            grid-column: 1;
-          }
-        }
-      </style>
-
-      <div class="section">
-        <div class="section-title">General</div>
-        <div class="field">
-          <label for="title">Dashboard title</label>
-          <input id="title" data-field="title" type="text" value="${escapeHtml(this._config.title || "")}" placeholder="${escapeHtml(this._hass?.config.location_name || "Bubble Card Dashboard")}">
-          <div class="hint">Leave empty to use the Home Assistant location name.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Navigation</div>
-        <div class="field">
-          <label for="profile_image">Profile image</label>
-          <input id="profile_image" data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">
-          <div class="hint">Optional image URL for the round avatar. Leave empty to show the current user's initial.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Controls</div>
-        <div class="field">
-          <label for="enable_advanced_controls">Advanced Bubble controls</label>
-          <input id="enable_advanced_controls" data-field="enable_advanced_controls" type="checkbox" ${enableAdvancedControls ? "checked" : ""}>
-          <div class="hint">Uses Bubble sliders and select sub-buttons for compatible lights, fans, numbers, climate entities and media players.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Rooms</div>
-        <div class="field">
-          <label for="max_entities_per_area">Max entities per room</label>
-          <input id="max_entities_per_area" data-field="max_entities_per_area" type="number" min="1" max="100" value="${maxEntities}">
-          <div class="hint">Limits how many generated entity cards are shown inside each room pop-up.</div>
-        </div>
-        <div class="field">
-          <label for="room_order">Room order</label>
-          <select id="room_order" data-field="room_order">
-            ${roomOrderOption("home_assistant", "Home Assistant order", roomOrder)}
-            ${roomOrderOption("alphabetical", "Alphabetical", roomOrder)}
-            ${roomOrderOption("custom", "Custom", roomOrder)}
-          </select>
-          <div class="hint">Choose how rooms are ordered. Select "Custom" to arrange them with the arrows below.</div>
-        </div>
-        ${this.renderRoomList(roomOrder)}
-      </div>
-
-      <div class="section">
-        <div class="section-title">Summaries</div>
-        <div class="field">
-          <label for="show_light_summary">Light summary</label>
-          <input id="show_light_summary" data-field="show_light_summary" type="checkbox" ${showLightSummary ? "checked" : ""}>
-        </div>
-        <div class="field">
-          <label for="show_security_summary">Security summary</label>
-          <input id="show_security_summary" data-field="show_security_summary" type="checkbox" ${showSecuritySummary ? "checked" : ""}>
-          <div class="hint">Shows locks, smoke &amp; leak sensors, doors &amp; windows (open/closed) and motion, plus any alarm panel, in logical groups.</div>
-        </div>
-        <div class="field">
-          <label for="show_alarm_controls">Alarm controls</label>
-          <input id="show_alarm_controls" data-field="show_alarm_controls" type="checkbox" ${showAlarmControls ? "checked" : ""}>
-          <div class="hint">Shows arm/disarm buttons on the alarm tile in the security summary. Turn off for a display-only alarm.</div>
-        </div>
-        <div class="field">
-          <label for="show_climate_summary">Climate summary</label>
-          <input id="show_climate_summary" data-field="show_climate_summary" type="checkbox" ${showClimateSummary ? "checked" : ""}>
-        </div>
-        <div class="field">
-          <label for="show_battery_summary">Battery summary</label>
-          <input id="show_battery_summary" data-field="show_battery_summary" type="checkbox" ${showBatterySummary ? "checked" : ""}>
-        </div>
-        <div class="field">
-          <label for="hide_mobile_app_batteries">Hide mobile app batteries</label>
-          <input id="hide_mobile_app_batteries" data-field="hide_mobile_app_batteries" type="checkbox" ${hideMobileBatteries ? "checked" : ""}>
-          <div class="hint">Hides phone, tablet and watch batteries (Mobile App) from the battery summary.</div>
-        </div>
-        <div class="field">
-          <label for="battery_critical_below">Battery critical below</label>
-          <input id="battery_critical_below" data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">
-          <div class="hint">Batteries below this percentage appear in the Critical group.</div>
-        </div>
-        <div class="field">
-          <label for="battery_low_below">Battery low below</label>
-          <input id="battery_low_below" data-field="battery_low_below" type="number" min="1" max="100" value="${batteryLow}">
-          <div class="hint">Batteries below this percentage (but at or above critical) appear in the Low group; the rest are OK.</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">Summary grouping</div>
-        <div class="field">
-          <label for="theme_grouping">Group entities by</label>
-          <select id="theme_grouping" data-field="theme_grouping">
-            ${themeGroupingOption("auto", "Automatic (per summary)", themeGrouping)}
-            ${themeGroupingOption("area", "Room", themeGrouping)}
-            ${themeGroupingOption("state", "On / off status", themeGrouping)}
-            ${themeGroupingOption("none", "No grouping", themeGrouping)}
-          </select>
-          <div class="hint">How the Lights and Climate summaries group their entities. "Automatic" uses the best fit per summary (lights by status, climate by room).</div>
-        </div>
-      </div>
-    `;
-    this.querySelectorAll("[data-field]").forEach((element) => {
-      element.addEventListener("change", (event) => this.handleChange(event));
-      element.addEventListener("input", (event) => this.handleInput(event));
+    const appearance = [
+      this.field("Visual intensity", `<select data-field="visual_intensity"><option value="subtle" ${intensity === "subtle" ? "selected" : ""}>Subtle</option><option value="balanced" ${intensity === "balanced" ? "selected" : ""}>Balanced</option><option value="vivid" ${intensity === "vivid" ? "selected" : ""}>Vivid</option></select>`, "Controls how strongly state colors tint room and active surfaces."),
+      this.field("Ambient room colors", this.toggle("ambient_room_colors", ambient), "Blend the real color of active room lights into each room tile."),
+      this.field("Media artwork surfaces", this.toggle("artwork_media_surface", artwork), "Use media artwork as the visual surface when supported by Bubble Card.")
+    ].join("");
+    const home = [
+      this.field("Contextual hero", `<select data-field="home_hero_mode"><option value="adaptive" ${hero === "adaptive" ? "selected" : ""}>Adaptive</option><option value="media" ${hero === "media" ? "selected" : ""}>Media first</option><option value="weather" ${hero === "weather" ? "selected" : ""}>Weather first</option><option value="none" ${hero === "none" ? "selected" : ""}>None</option></select>`, "Adaptive prioritizes what deserves attention now instead of showing a fixed catalogue."),
+      this.field("Hide inactive context cards", this.toggle("contextual_home_cards", contextual), "Keep Home calm: idle vacuums and inactive media stay out of the primary surface."),
+      this.field("Profile image", `<input data-field="profile_image" type="text" value="${escapeHtml(this._config.profile_image || "")}" placeholder="/local/profile.jpg">`)
+    ].join("");
+    const rooms = [
+      this.field("Max entities per room", `<input data-field="max_entities_per_area" type="number" min="1" max="100" value="${maxEntities}">`, "Complex controls are full width; simple actions use two columns."),
+      this.field("Room order", `<select data-field="room_order">${roomOrderOption("home_assistant", "Home Assistant order", roomOrder)}${roomOrderOption("alphabetical", "Alphabetical", roomOrder)}${roomOrderOption("custom", "Custom", roomOrder)}</select>`),
+      this.renderRoomList(roomOrder)
+    ].join("");
+    const summaries = [
+      this.field("Lights", this.toggle("show_light_summary", this._config.show_light_summary ?? true)),
+      this.field("Security", this.toggle("show_security_summary", this._config.show_security_summary ?? true)),
+      this.field("Alarm controls", this.toggle("show_alarm_controls", this._config.show_alarm_controls ?? DEFAULT_SHOW_ALARM_CONTROLS)),
+      this.field("Climate", this.toggle("show_climate_summary", this._config.show_climate_summary ?? true)),
+      this.field("Batteries", this.toggle("show_battery_summary", this._config.show_battery_summary ?? true)),
+      this.field("Hide mobile batteries", this.toggle("hide_mobile_app_batteries", this._config.hide_mobile_app_batteries ?? DEFAULT_HIDE_MOBILE_APP_BATTERIES)),
+      this.field("Critical below", `<input data-field="battery_critical_below" type="number" min="1" max="100" value="${batteryCritical}">`),
+      this.field("Low below", `<input data-field="battery_low_below" type="number" min="1" max="100" value="${batteryLow}">`),
+      this.field("Group entities by", `<select data-field="theme_grouping">${themeGroupingOption("auto", "Automatic", themeGrouping)}${themeGroupingOption("area", "Room", themeGrouping)}${themeGroupingOption("state", "State", themeGrouping)}${themeGroupingOption("none", "No grouping", themeGrouping)}</select>`)
+    ].join("");
+    const advancedBody = [
+      this.field("Advanced Bubble controls", this.toggle("enable_advanced_controls", advanced), "Enable capability-aware sliders/selects for compatible entities."),
+      this.field("Dashboard title", `<input data-field="title" type="text" value="${escapeHtml(this._config.title || "")}" placeholder="${escapeHtml(this._hass?.config.location_name || "Bubble Card Dashboard")}">`, "Leave empty to use the Home Assistant location name.")
+    ].join("");
+    this.innerHTML = `<style>
+      :host{display:block;color:var(--primary-text-color);font:inherit}.editor{display:grid;gap:12px;max-width:820px;margin:auto}.intro{padding:4px 4px 10px}.intro h2{margin:0 0 6px;font-size:20px}.intro p{margin:0;color:var(--secondary-text-color);line-height:1.45}
+      .group-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--secondary-text-color);margin:18px 4px 2px}.panel{border:1px solid var(--divider-color);border-radius:16px;background:var(--card-background-color);overflow:hidden}.panel-header{width:100%;display:flex;align-items:center;gap:14px;padding:16px;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}.panel-header>ha-icon:first-child{color:var(--primary-color)}.panel-heading{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}.panel-heading small{font-weight:400;color:var(--secondary-text-color);white-space:normal}.chevron{transition:transform .18s ease}.expanded .chevron{transform:rotate(180deg)}.panel-body{padding:0 16px 16px;border-top:1px solid var(--divider-color)}
+      .field{display:grid;grid-template-columns:minmax(180px,240px) 1fr;gap:20px;align-items:start;padding:15px 0;border-bottom:1px solid color-mix(in srgb,var(--divider-color) 65%,transparent)}.field:last-child{border-bottom:0}.field>label{font-weight:500;padding-top:9px}.control{min-width:0}.hint{font-size:12px;line-height:1.4;color:var(--secondary-text-color);margin-top:7px}input,select{width:100%;box-sizing:border-box;border:1px solid var(--divider-color);border-radius:10px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit;padding:10px 12px}
+      .switch{display:inline-flex!important;padding:0!important}.switch input{position:absolute;opacity:0;width:1px}.switch span{width:44px;height:24px;border-radius:14px;background:var(--disabled-color);position:relative;transition:.18s}.switch span:after{content:"";position:absolute;width:18px;height:18px;border-radius:50%;background:white;top:3px;left:3px;transition:.18s}.switch input:checked+span{background:var(--primary-color)}.switch input:checked+span:after{transform:translateX(20px)}
+      .room-list{grid-column:1/-1;border:1px solid var(--divider-color);border-radius:12px;overflow:hidden;margin-top:8px}.room-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--divider-color)}.room-row:last-child{border:0}.room-row input{width:auto}.room-name{flex:1}.room-actions{display:flex;gap:6px}.room-actions button{width:34px;height:34px;border:1px solid var(--divider-color);border-radius:9px;background:var(--secondary-background-color);color:inherit}.room-empty{padding:12px;color:var(--secondary-text-color)}
+      @media(max-width:640px){.field{grid-template-columns:1fr;gap:7px}.field>label{padding-top:0}.panel-header{padding:14px}.panel-heading small{font-size:12px}}
+    </style><div class="editor"><div class="intro"><h2>Bubble Card Dashboard</h2><p>Adaptive Home Surface \u2014 configure what the household sees, not individual Home Assistant implementation details.</p></div>
+      <div class="group-label">Experience</div>${this.panel("appearance", "mdi:palette-outline", "Appearance", "Color, ambience and visual personality", appearance)}${this.panel("home", "mdi:home-lightning-bolt-outline", "Home", "Contextual overview and navigation", home)}
+      <div class="group-label">Spaces & controls</div>${this.panel("rooms", "mdi:floor-plan", "Rooms", "Room visibility, order and popup density", rooms)}${this.panel("summaries", "mdi:view-dashboard-outline", "Global controls", "Lights, security, climate and maintenance", summaries)}
+      <div class="group-label">Advanced</div>${this.panel("advanced", "mdi:tune-variant", "Advanced", "Bubble controls and dashboard metadata", advancedBody)}
+    </div>`;
+    this.querySelectorAll("[data-panel]").forEach((el) => el.addEventListener("click", (event) => this.togglePanel(event.currentTarget.dataset.panel || "")));
+    this.querySelectorAll("[data-field]").forEach((el) => {
+      el.addEventListener("change", (event) => this.handleChange(event));
+      el.addEventListener("input", (event) => this.handleInput(event));
     });
-    this.querySelectorAll("[data-room-visible]").forEach((element) => {
-      element.addEventListener("change", (event) => this.handleRoomVisibility(event));
-    });
-    this.querySelectorAll("[data-room-move]").forEach((element) => {
-      element.addEventListener("click", (event) => this.handleRoomMove(event));
-    });
+    this.querySelectorAll("[data-room-visible]").forEach((el) => el.addEventListener("change", (event) => this.handleRoomVisibility(event)));
+    this.querySelectorAll("[data-room-move]").forEach((el) => el.addEventListener("click", (event) => this.handleRoomMove(event)));
+  }
+  togglePanel(key) {
+    if (!key) return;
+    this._expanded.has(key) ? this._expanded.delete(key) : this._expanded.add(key);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...this._expanded]));
+    } catch {
+    }
+    this.render();
   }
   renderRoomList(roomOrder) {
-    if (!this._areasLoaded) {
-      return `<div class="room-list"><div class="room-empty">Loading rooms\u2026</div></div>`;
-    }
-    if (!this._areas.length) {
-      return `<div class="room-list"><div class="room-empty">No rooms with entities found.</div></div>`;
-    }
-    const hiddenAreas = new Set(this._config.hidden_areas ?? []);
-    const orderedAreas = this.orderedAreasForDisplay();
-    const showMoveButtons = roomOrder === "custom";
-    const rows = orderedAreas.map((area, index) => {
-      const areaId = escapeHtml(area.area_id);
-      const actions = showMoveButtons ? `<span class="room-actions">
-              <button type="button" data-room-move="up" data-area="${areaId}" ${index === 0 ? "disabled" : ""} aria-label="Move up">\u2191</button>
-              <button type="button" data-room-move="down" data-area="${areaId}" ${index === orderedAreas.length - 1 ? "disabled" : ""} aria-label="Move down">\u2193</button>
-            </span>` : "";
-      return `
-          <div class="room-row">
-            <input type="checkbox" data-room-visible="${areaId}" ${hiddenAreas.has(area.area_id) ? "" : "checked"}>
-            <span class="room-name">${escapeHtml(area.name)}</span>
-            ${actions}
-          </div>`;
-    }).join("");
-    return `<div class="room-list">${rows}</div>`;
+    if (!this._areasLoaded) return `<div class="room-list"><div class="room-empty">Loading rooms\u2026</div></div>`;
+    if (!this._areas.length) return `<div class="room-list"><div class="room-empty">No rooms with entities found.</div></div>`;
+    const hidden = new Set(this._config.hidden_areas ?? []);
+    const ordered = this.orderedAreasForDisplay();
+    return `<div class="room-list">${ordered.map((area, index) => `<div class="room-row"><input type="checkbox" data-room-visible="${escapeHtml(area.area_id)}" ${hidden.has(area.area_id) ? "" : "checked"}><span class="room-name">${escapeHtml(area.name)}</span>${roomOrder === "custom" ? `<span class="room-actions"><button type="button" data-room-move="up" data-area="${escapeHtml(area.area_id)}" ${index === 0 ? "disabled" : ""}>\u2191</button><button type="button" data-room-move="down" data-area="${escapeHtml(area.area_id)}" ${index === ordered.length - 1 ? "disabled" : ""}>\u2193</button></span>` : ""}</div>`).join("")}</div>`;
   }
   handleInput(event) {
     const target = event.target;
-    if (target.dataset.field === "title" || target.dataset.field === "profile_image") {
-      this.updateConfig(target.dataset.field, target.value || void 0);
-    }
+    if (target.dataset.field === "title" || target.dataset.field === "profile_image") this.updateConfig(target.dataset.field, target.value || void 0);
   }
   handleChange(event) {
     const target = event.target;
     const field = target.dataset.field;
-    if (!field || field === "title") {
-      return;
-    }
-    if (field === "max_entities_per_area") {
-      this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
-      return;
-    }
-    if (field === "battery_critical_below" || field === "battery_low_below") {
+    if (!field || field === "title" || field === "profile_image") return;
+    if (field === "max_entities_per_area" || field === "battery_critical_below" || field === "battery_low_below") {
       this.updateConfig(field, clampNumber(Number(target.value), 1, 100));
       return;
     }
@@ -590,61 +395,46 @@ var BubbleCardDashboardStrategyEditor = class extends HTMLElement {
   }
   handleRoomVisibility(event) {
     const target = event.target;
-    const areaId = target.dataset.roomVisible;
-    if (!areaId) {
-      return;
-    }
+    const id = target.dataset.roomVisible;
+    if (!id) return;
     const hidden = new Set(this._config.hidden_areas ?? []);
-    if (target.checked) {
-      hidden.delete(areaId);
-    } else {
-      hidden.add(areaId);
-    }
-    const hiddenList = [...hidden];
-    this.updateConfig("hidden_areas", hiddenList.length ? hiddenList : void 0);
+    target.checked ? hidden.delete(id) : hidden.add(id);
+    const list = [...hidden];
+    this.updateConfig("hidden_areas", list.length ? list : void 0);
   }
   handleRoomMove(event) {
     const target = event.currentTarget;
-    const areaId = target.dataset.area;
-    const direction = target.dataset.roomMove;
-    if (!areaId || direction !== "up" && direction !== "down") {
-      return;
-    }
-    const order = this.orderedAreasForDisplay().map((area) => area.area_id);
-    const index = order.indexOf(areaId);
-    const target_index = direction === "up" ? index - 1 : index + 1;
-    if (index === -1 || target_index < 0 || target_index >= order.length) {
-      return;
-    }
-    [order[index], order[target_index]] = [order[target_index], order[index]];
+    const id = target.dataset.area;
+    const dir = target.dataset.roomMove;
+    if (!id || dir !== "up" && dir !== "down") return;
+    const order = this.orderedAreasForDisplay().map((a) => a.area_id);
+    const i = order.indexOf(id);
+    const j = dir === "up" ? i - 1 : i + 1;
+    if (i === -1 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
     this.updateConfig("custom_room_order", order);
     this.render();
   }
   updateConfig(field, value) {
-    const nextConfig = {
-      ...this._config,
-      [field]: value
-    };
-    if (value === void 0 || value === "") {
-      delete nextConfig[field];
-    }
-    this._config = nextConfig;
-    this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: {
-          config: nextConfig
-        },
-        bubbles: true,
-        composed: true
-      })
-    );
+    const next = { ...this._config, [field]: value };
+    if (value === void 0 || value === "") delete next[field];
+    this._config = next;
+    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: next }, bubbles: true, composed: true }));
   }
 };
-function themeGroupingOption(value, label, selectedValue) {
-  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+function loadExpandedPanels() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    if (Array.isArray(parsed)) return new Set(parsed.filter((v) => typeof v === "string"));
+  } catch {
+  }
+  return /* @__PURE__ */ new Set(["appearance", "home"]);
 }
-function roomOrderOption(value, label, selectedValue) {
-  return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+function themeGroupingOption(value, label, selected) {
+  return `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`;
+}
+function roomOrderOption(value, label, selected) {
+  return `<option value="${value}" ${value === selected ? "selected" : ""}>${label}</option>`;
 }
 
 // src/design.ts
@@ -801,40 +591,36 @@ function buildFooter(areas, roomsLabel = "Rooms") {
 // src/cards/media-player.ts
 function mediaPlayerToCard(entityId, options) {
   const advanced = options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
+  const artwork = options.artwork_media_surface ?? true;
   return {
     type: "custom:bubble-card",
     card_type: "media-player",
     entity: entityId,
     show_state: true,
-    cover_background: true,
+    // Bubble Card's cover surface is deliberately the visual hero: artwork gives
+    // active media its own identity while the rest of Home remains calm.
+    cover_background: artwork,
     main_buttons_position: "bottom",
     main_buttons_full_width: true,
-    hide: {
-      previous_button: true,
-      next_button: true
-    },
+    hide: { previous_button: true, next_button: true },
     ...advanced ? {
       card_layout: "large",
       rows: 2,
       sub_button: {
         main: [],
-        bottom: [
-          {
-            buttons_layout: "inline",
-            justify_content: "fill",
-            group: [
-              {
-                entity: entityId,
-                sub_button_type: "slider",
-                always_visible: true,
-                show_button_info: true,
-                slider_value_position: "right",
-                fill_width: true,
-                hide_when_parent_unavailable: true
-              }
-            ]
-          }
-        ]
+        bottom: [{
+          buttons_layout: "inline",
+          justify_content: "fill",
+          group: [{
+            entity: entityId,
+            sub_button_type: "slider",
+            always_visible: true,
+            show_button_info: true,
+            slider_value_position: "right",
+            fill_width: true,
+            hide_when_parent_unavailable: true
+          }]
+        }]
       }
     } : {}
   };
