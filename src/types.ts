@@ -30,29 +30,21 @@ export type HassStateObject = {
 };
 
 export type HomeAssistant = {
-  config: {
-    location_name?: string;
-  };
-  user?: {
-    name?: string;
-  };
+  config: { location_name?: string };
+  user?: { name?: string };
   language?: string;
-  locale?: {
-    language?: string;
-  };
+  locale?: { language?: string };
   states: Record<string, HassStateObject>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   connection?: {
-    subscribeEvents(
-      callback: (event: unknown) => void,
-      eventType: string,
-    ): Promise<() => void>;
+    subscribeEvents(callback: (event: unknown) => void, eventType: string): Promise<() => void>;
   };
 };
 
 export type ThemeGrouping = "area" | "state" | "none";
-
 export type RoomOrder = "home_assistant" | "alphabetical" | "custom";
+export type HomeHeroMode = "adaptive" | "media" | "weather" | "none";
+export type VisualIntensity = "subtle" | "balanced" | "vivid";
 
 export type StrategyConfig = {
   title?: string;
@@ -73,6 +65,14 @@ export type StrategyConfig = {
   battery_critical_below?: number;
   battery_low_below?: number;
   show_alarm_controls?: boolean;
+
+  // Adaptive Home Surface visual/UX options. Defaults intentionally require no
+  // configuration so existing dashboards gain the new hierarchy automatically.
+  home_hero_mode?: HomeHeroMode;
+  visual_intensity?: VisualIntensity;
+  ambient_room_colors?: boolean;
+  artwork_media_surface?: boolean;
+  contextual_home_cards?: boolean;
 };
 
 export type LovelaceCard = Record<string, unknown>;
