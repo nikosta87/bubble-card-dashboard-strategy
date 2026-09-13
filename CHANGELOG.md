@@ -2,6 +2,23 @@
 
 All notable changes to Bubble Card Dashboard Strategy are documented here.
 
+## [0.25.0] - 2026-09-13
+
+### Added
+
+- Adaptive Home Surface with context-aware hero content for active media, vacuum activity, or weather
+- Ambient room-card surfaces derived from the actual colour of active room lights
+- Configurable visual intensity with subtle, balanced, and vivid modes
+- Artwork-first media presentation and contextual Home-card behaviour
+- New dashboard editor options for hero behaviour, ambient colours, media artwork, and contextual cards
+
+### Changed
+
+- Dashboard settings are reorganized into clean collapsible groups inspired by the Simon42 strategy editor, with persistent expansion state and clearer option grouping
+- Room cards are stable navigation surfaces instead of inheriting behaviour from an arbitrary first entity
+- Home prioritizes current household context instead of presenting a fixed catalogue of overview cards
+- The visual design system now uses semantic state-driven surface tokens
+
 ## [0.24.0] - 2026-09-08
 
 ### Added
@@ -88,3 +105,4 @@ All notable changes to Bubble Card Dashboard Strategy are documented here.
 [0.22.1]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.22.1
 [0.23.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.23.0
 [0.24.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.24.0
+[0.25.0]: https://github.com/nikosta87/bubble-card-dashboard-strategy/releases/tag/v0.25.0
