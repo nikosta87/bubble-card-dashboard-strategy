@@ -649,21 +649,16 @@ function roomOrderOption(value, label, selectedValue) {
 
 // src/design.ts
 var DESIGN = {
-  popup: {
-    widthDesktop: "540px",
-    bgOpacity: "92",
-    bgBlur: "14"
-  },
-  // card_layout for cards whose sub-buttons should sit on a second row instead of
-  // inline with the name.
-  cardLayout: {
-    alarm: "large-2-rows",
-    lock: "large-2-rows"
-  }
+  popup: { widthDesktop: "540px", bgOpacity: "92", bgBlur: "14" },
+  cardLayout: { alarm: "large-2-rows", lock: "large-2-rows" }
 };
 var THEME_TOKENS = {
   "--bcds-accent": "var(--primary-color)",
-  "--bcds-radius": "var(--ha-card-border-radius, 18px)"
+  "--bcds-radius": "var(--ha-card-border-radius, 22px)",
+  "--bcds-surface": "var(--ha-card-background, var(--card-background-color))",
+  "--bcds-positive": "var(--success-color, #43a047)",
+  "--bcds-warning": "var(--warning-color, #ffa000)",
+  "--bcds-critical": "var(--error-color, #db4437)"
 };
 var BUBBLE_BINDINGS = {
   "--bubble-accent-color": "var(--bcds-accent)",
@@ -685,46 +680,63 @@ function bubbleLightSurfaceStyles() {
         card.style.removeProperty('--bubble-button-main-background-color');
         card.style.removeProperty('--bubble-button-icon-background-color');
       };
-
-      if (!stateObj || stateObj.state !== 'on') {
-        clear();
-        return '';
-      }
-
+      if (!stateObj || stateObj.state !== 'on') { clear(); return ''; }
       let rgb = Array.isArray(attrs.rgb_color) ? attrs.rgb_color.slice(0, 3).map(Number) : null;
       let kelvin = Number(attrs.color_temp_kelvin || 0);
       if (!kelvin && Number(attrs.color_temp || 0) > 0) kelvin = 1000000 / Number(attrs.color_temp);
-
       if (!rgb && kelvin > 0) {
         const temp = Math.max(10, Math.min(400, kelvin / 100));
         const clamp = (value) => Math.max(0, Math.min(255, Math.round(value)));
-        let red;
-        let green;
-        let blue;
-
+        let red, green, blue;
         if (temp <= 66) {
-          red = 255;
-          green = 99.4708025861 * Math.log(temp) - 161.1195681661;
+          red = 255; green = 99.4708025861 * Math.log(temp) - 161.1195681661;
           blue = temp <= 19 ? 0 : 138.5177312231 * Math.log(temp - 10) - 305.0447927307;
         } else {
           red = 329.698727446 * Math.pow(temp - 60, -0.1332047592);
-          green = 288.1221695283 * Math.pow(temp - 60, -0.0755148492);
-          blue = 255;
+          green = 288.1221695283 * Math.pow(temp - 60, -0.0755148492); blue = 255;
         }
         rgb = [clamp(red), clamp(green), clamp(blue)];
       }
-
-      if (!rgb || rgb.some((value) => !Number.isFinite(value))) {
-        clear();
-        return '';
-      }
-
+      if (!rgb || rgb.some((value) => !Number.isFinite(value))) { clear(); return ''; }
       const brightness = Math.max(0, Math.min(255, Number(attrs.brightness ?? 180))) / 255;
-      const surfaceAlpha = (0.10 + brightness * 0.12).toFixed(3);
-      const iconAlpha = (0.20 + brightness * 0.16).toFixed(3);
+      const surfaceAlpha = (0.11 + brightness * 0.14).toFixed(3);
+      const iconAlpha = (0.22 + brightness * 0.18).toFixed(3);
       const color = rgb.map((value) => Math.max(0, Math.min(255, Math.round(value))));
       card.style.setProperty('--bubble-button-main-background-color', 'rgba(' + color.join(',') + ',' + surfaceAlpha + ')');
       card.style.setProperty('--bubble-button-icon-background-color', 'rgba(' + color.join(',') + ',' + iconAlpha + ')');
+      return '';
+    })()}
+  `;
+}
+function bubbleRoomAmbientStyles(lightEntityIds, intensity = "balanced") {
+  const ids = JSON.stringify(lightEntityIds);
+  const alpha = intensity === "subtle" ? 0.12 : intensity === "vivid" ? 0.28 : 0.2;
+  return `
+    \${(() => {
+      const ids = ${ids};
+      const active = ids.map(id => hass.states[id]).filter(s => s?.state === 'on');
+      if (!active.length) {
+        card.style.removeProperty('--bubble-button-main-background-color');
+        card.style.removeProperty('--bubble-button-icon-background-color');
+        return '';
+      }
+      const toRgb = (s) => {
+        const a = s.attributes || {};
+        if (Array.isArray(a.rgb_color)) return a.rgb_color.slice(0, 3).map(Number);
+        let k = Number(a.color_temp_kelvin || 0);
+        if (!k && Number(a.color_temp || 0) > 0) k = 1000000 / Number(a.color_temp);
+        if (!k) return [255, 193, 110];
+        const t = Math.max(10, Math.min(400, k / 100));
+        const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
+        let r, g, b;
+        if (t <= 66) { r = 255; g = 99.4708025861 * Math.log(t) - 161.1195681661; b = t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307; }
+        else { r = 329.698727446 * Math.pow(t - 60, -0.1332047592); g = 288.1221695283 * Math.pow(t - 60, -0.0755148492); b = 255; }
+        return [clamp(r), clamp(g), clamp(b)];
+      };
+      const colors = active.map(toRgb);
+      const rgb = [0,1,2].map(i => Math.round(colors.reduce((sum,c) => sum + c[i], 0) / colors.length));
+      card.style.setProperty('--bubble-button-main-background-color', 'rgba(' + rgb.join(',') + ',${alpha})');
+      card.style.setProperty('--bubble-button-icon-background-color', 'rgba(' + rgb.join(',') + ',${Math.min(alpha + 0.12, 0.45)})');
       return '';
     })()}
   `;
@@ -1112,60 +1124,41 @@ function buildSmartRoomCards(areas, entities, devices, hass, options) {
 }
 function smartRoomCard(area, entities, devices, hass, options) {
   const areaEntities = getVisibleAreaEntities(area.area_id, entities, devices, hass, options);
-  const primaryEntity = findRoomPrimaryEntity(areaEntities);
-  const statusEntities = findRoomStatusEntities(areaEntities, hass).filter(
-    (entity) => entity.entity_id !== primaryEntity?.entity_id
-  );
-  const primaryDomain = primaryEntity ? getDomain(primaryEntity.entity_id) : "";
+  const lightIds = areaEntities.filter((entity) => getDomain(entity.entity_id) === "light").map((entity) => entity.entity_id);
+  const statusEntities = findRoomStatusEntities(areaEntities, hass);
+  const ambient = options.ambient_room_colors ?? true;
+  const intensity = options.visual_intensity ?? "balanced";
   return {
     type: "custom:bubble-card",
     card_type: "button",
-    button_type: primaryEntity ? ["light", "switch"].includes(primaryDomain) ? "switch" : "state" : "name",
+    button_type: "name",
     name: area.name,
     icon: area.icon || "mdi:home-outline",
-    ...primaryEntity ? { entity: primaryEntity.entity_id } : {},
-    ...primaryDomain === "light" ? { use_accent_color: false, styles: bubbleLightSurfaceStyles() } : {},
+    ...ambient && lightIds.length ? { styles: bubbleRoomAmbientStyles(lightIds, intensity) } : {},
     card_layout: "large",
     rows: 2,
     show_name: true,
     show_state: false,
-    button_action: {
-      tap_action: {
-        action: "navigate",
-        navigation_path: getRoomHash(area)
-      }
-    },
+    button_action: { tap_action: { action: "navigate", navigation_path: getRoomHash(area) } },
     ...statusEntities.length ? {
       sub_button: {
         main: [],
-        bottom: [
-          {
-            buttons_layout: "inline",
-            justify_content: "start",
-            group: statusEntities.map(roomStatusSubButton)
-          }
-        ]
+        bottom: [{ buttons_layout: "inline", justify_content: "start", group: statusEntities.map(roomStatusSubButton) }]
       }
     } : {}
   };
-}
-function findRoomPrimaryEntity(entities) {
-  for (const domain of ["light", "switch", "climate", "cover"]) {
-    const entity = entities.find((candidate) => getDomain(candidate.entity_id) === domain);
-    if (entity) return entity;
-  }
-  return void 0;
 }
 function findRoomStatusEntities(entities, hass) {
   const findByDeviceClass = (domain, deviceClasses) => entities.find((entity) => {
     const state = hass.states[entity.entity_id];
     return getDomain(entity.entity_id) === domain && deviceClasses.includes(String(state?.attributes.device_class || ""));
   });
+  const lights = entities.filter((entity) => getDomain(entity.entity_id) === "light");
   const candidates = [
     findByDeviceClass("sensor", ["temperature"]),
     findByDeviceClass("binary_sensor", ["door", "window", "opening"]),
     findByDeviceClass("binary_sensor", ["occupancy", "presence", "motion"]),
-    entities.find((entity) => getDomain(entity.entity_id) === "light")
+    lights[0]
   ];
   return candidates.filter((entity) => Boolean(entity)).slice(0, 2);
 }
@@ -1179,9 +1172,7 @@ function roomStatusSubButton(entity) {
     state_background: domain !== "sensor",
     light_background: domain === "light",
     fill_width: false,
-    tap_action: {
-      action: domain === "light" ? "toggle" : "more-info"
-    }
+    tap_action: { action: domain === "light" ? "toggle" : "more-info" }
   };
 }
 
