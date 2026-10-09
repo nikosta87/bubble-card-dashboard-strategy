@@ -1,8 +1,12 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
+    inputs:
+      bundle_sha:
+        description: Commit containing the tested, synchronized HACS bundle
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.bundle_sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -24,6 +30,7 @@ jobs:
       - name: Create release for new version
         env:
           GH_TOKEN: ${{ github.token }}
+          BUNDLE_SHA: ${{ inputs.bundle_sha }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           TAG="v${VERSION}"
@@ -35,16 +42,16 @@ jobs:
 
           echo "Creating release $TAG"
 
-          git log -1 --pretty=format:'%b' "$GITHUB_SHA" > /tmp/release-notes.md
+          git log -1 --pretty=format:'%b' "$BUNDLE_SHA" > /tmp/release-notes.md
 
           if [ -s /tmp/release-notes.md ]; then
             gh release create "$TAG" \
               --title "$TAG" \
-              --target "$GITHUB_SHA" \
+              --target "$BUNDLE_SHA" \
               --notes-file /tmp/release-notes.md
           else
             gh release create "$TAG" \
               --title "$TAG" \
-              --target "$GITHUB_SHA" \
+              --target "$BUNDLE_SHA" \
               --generate-notes
           fi

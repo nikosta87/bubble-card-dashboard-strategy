@@ -2,14 +2,23 @@ name: Build
 
 on:
   push:
+    branches: ['**']
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      bundle_sha: ${{ steps.bundle.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,20 +26,34 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
       - name: Commit generated HACS bundle
-        if: github.event_name == 'push'
+        id: bundle
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          git add dist/bubble-card-dashboard-strategy.js
-          if git diff --cached --quiet; then
-            echo "Generated bundle is already synchronized."
-            exit 0
+          if [ "$EVENT_NAME" = "push" ]; then
+            git add dist/bubble-card-dashboard-strategy.js
+            if ! git diff --cached --quiet; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git commit -m "chore: sync generated dashboard bundle"
+              # A newer branch head causes a safe non-fast-forward failure.
+              git push origin "HEAD:${GITHUB_REF_NAME}"
+            fi
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: sync generated dashboard bundle"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: bubble-card-dashboard-strategy
           path: dist/bubble-card-dashboard-strategy.js
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      bundle_sha: ${{ needs.build.outputs.bundle_sha }}
