@@ -88,6 +88,7 @@ const SECURITY_DEVICE_CLASSES = [
   "tamper",
   "vibration",
   "sound",
+  "glass_break",
 ];
 
 const SUMMARIES: SummaryDefinition[] = [
@@ -411,6 +412,7 @@ function groupEntries(summary: ResolvedDomainSummary, grouping: ThemeGrouping, h
 
 const SECURITY_HAZARD_CLASSES = ["smoke", "gas", "carbon_monoxide", "moisture"];
 const SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
+const SECURITY_INTRUSION_CLASSES = ["glass_break"];
 const SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
 
 const SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
@@ -454,6 +456,11 @@ function buildSecurityCards(hass: HomeAssistant, options: StrategyConfig, t: Tra
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
     cards.push(bubbleSeparator(t("doorsWindowsClosed"), "mdi:door-closed"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
+  }
+
+  if (hasBinarySensorClass(hass, SECURITY_INTRUSION_CLASSES)) {
+    cards.push(bubbleSeparator(t("intrusion"), "mdi:shield-alert"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_INTRUSION_CLASSES) }));
   }
 
   if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {

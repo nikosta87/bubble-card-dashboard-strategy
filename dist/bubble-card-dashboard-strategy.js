@@ -980,6 +980,7 @@ var STRINGS = {
     allOff: "All off",
     alarm: "Alarm",
     locks: "Locks",
+    intrusion: "Intrusion detection",
     lock: "Lock",
     unlock: "Unlock",
     smokeAndLeaks: "Smoke & Leaks",
@@ -1010,6 +1011,7 @@ var STRINGS = {
     allOff: "Alle aus",
     alarm: "Alarm",
     locks: "Schl\xF6sser",
+    intrusion: "Einbrucherkennung",
     lock: "Abschlie\xDFen",
     unlock: "Aufschlie\xDFen",
     smokeAndLeaks: "Rauch & Lecks",
@@ -1076,7 +1078,8 @@ var SECURITY_DEVICE_CLASSES = [
   "safety",
   "tamper",
   "vibration",
-  "sound"
+  "sound",
+  "glass_break"
 ];
 var SUMMARIES = [
   {
@@ -1295,6 +1298,7 @@ function groupEntries(summary, grouping, hass) {
 }
 var SECURITY_HAZARD_CLASSES = ["smoke", "gas", "carbon_monoxide", "moisture"];
 var SECURITY_OPENING_CLASSES = ["door", "garage_door", "window", "opening"];
+var SECURITY_INTRUSION_CLASSES = ["glass_break"];
 var SECURITY_MOTION_CLASSES = ["motion", "occupancy", "moving", "presence", "vibration", "sound"];
 var SECURITY_BUTTON_TEMPLATE = { type: "custom:bubble-card", card_type: "button", button_type: "state" };
 function buildSecurityCards(hass, options, t) {
@@ -1329,6 +1333,10 @@ function buildSecurityCards(hass, options, t) {
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "on") }));
     cards.push(bubbleSeparator(t("doorsWindowsClosed"), "mdi:door-closed"));
     cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_OPENING_CLASSES, "off") }));
+  }
+  if (hasBinarySensorClass(hass, SECURITY_INTRUSION_CLASSES)) {
+    cards.push(bubbleSeparator(t("intrusion"), "mdi:shield-alert"));
+    cards.push(autoEntitiesGrid({ columns: 2, include: securityClassIncludes(SECURITY_INTRUSION_CLASSES) }));
   }
   if (hasBinarySensorClass(hass, SECURITY_MOTION_CLASSES)) {
     cards.push(bubbleSeparator(t("motionAndPresence"), "mdi:motion-sensor"));
