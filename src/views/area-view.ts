@@ -7,8 +7,9 @@ import type {
   StrategyConfig,
 } from "../types";
 import { bubbleSeparator, buildFooter } from "../cards/common";
-import { entityToCard } from "../cards/entity-cards";
+import { entityToCard, getEntityPresentation, groupRoomEntities } from "../cards/entity-cards";
 import { getAreaEntities } from "../utils/entities";
+import { createTranslator } from "../i18n";
 
 export function buildAreaView(
   area: HassArea,
@@ -17,9 +18,17 @@ export function buildAreaView(
   hass: HomeAssistant,
   options: StrategyConfig,
 ) {
-  const cards = getAreaEntities(area.area_id, entities, devices, hass, options)
-    .slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA)
-    .map((entity) => entityToCard(entity, options, hass));
+  const roomEntities = getAreaEntities(area.area_id, entities, devices, hass, options)
+    .slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA);
+  const t = createTranslator(hass);
+  const cards = groupRoomEntities(roomEntities).flatMap((group) => {
+    if (!group.entities.length) return [];
+    const wide = group.entities.filter((entity) => getEntityPresentation(entity, options, hass) === "wide");
+    const compact = group.entities.filter((entity) => getEntityPresentation(entity, options, hass) !== "wide");
+    return [bubbleSeparator(t(group.titleKey), group.icon),
+      ...(wide.length ? [{ type: "grid", square: false, columns: 1, cards: wide.map((entity) => entityToCard(entity, options, hass)) }] : []),
+      ...(compact.length ? [{ type: "grid", square: false, columns: 2, cards: compact.map((entity) => entityToCard(entity, options, hass)) }] : [])];
+  });
 
   return {
     type: "sections",
@@ -30,12 +39,7 @@ export function buildAreaView(
         cards: [
           bubbleSeparator(area.name, area.icon || "mdi:home-outline"),
           cards.length
-            ? {
-                type: "grid",
-                square: false,
-                columns: 2,
-                cards,
-              }
+            ? { type: "vertical-stack", cards }
             : {
                 type: "markdown",
                 content: "No visible entities found for this area.",
