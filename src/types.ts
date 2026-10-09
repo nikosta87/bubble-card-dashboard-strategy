@@ -12,6 +12,7 @@ export type HassEntity = {
 export type HassDevice = {
   id: string;
   area_id?: string | null;
+  via_device_id?: string | null;
   disabled_by?: string | null;
 };
 
