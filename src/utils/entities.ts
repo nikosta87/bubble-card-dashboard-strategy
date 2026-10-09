@@ -55,7 +55,16 @@ export function entityBelongsToArea(entity: HassEntity, areaId: string, devices:
   }
 
   if (!entity.area_id && entity.device_id) {
-    return devices.some((device) => device.id === entity.device_id && device.area_id === areaId && !device.disabled_by);
+    const byId = new Map(devices.map((device) => [device.id, device]));
+    const visited = new Set<string>();
+    let deviceId: string | undefined | null = entity.device_id;
+    while (deviceId && !visited.has(deviceId)) {
+      visited.add(deviceId);
+      const device = byId.get(deviceId);
+      if (!device || device.disabled_by) return false;
+      if (device.area_id) return device.area_id === areaId;
+      deviceId = device.via_device_id;
+    }
   }
 
   return false;
