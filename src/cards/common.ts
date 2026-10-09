@@ -18,8 +18,6 @@ export function bubblePopup(config: {
     icon: config.icon,
     popup_mode: "adaptive-dialog",
     popup_style: "bubble",
-    // Keep gestures on the header so sliders and scrolling do not dismiss popups.
-    slide_to_close: "header",
     performance_mode: "performance",
     with_bottom_offset: true,
     full_width_on_mobile: true,
