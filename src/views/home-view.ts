@@ -56,6 +56,8 @@ function buildRoomPopup(area:HassArea,entities:HassEntity[],devices:HassDevice[]
   const areaEntities=getAreaEntities(area.area_id,entities,devices,hass,options); const max=options.max_entities_per_area??DEFAULT_MAX_ENTITIES_PER_AREA; let remaining=max;
   const groups=groupRoomEntities(areaEntities).map(group=>{const visible=group.entities.slice(0,remaining);remaining-=visible.length;return {...group,entities:visible};}); const cards:LovelaceCard[]=[];
   groups.forEach(group=>{if(!group.entities.length)return;cards.push(bubbleSeparator(t(group.titleKey),group.icon));cards.push(...buildResponsiveEntityGrids(group.entities,options,hass));});
+  const readings=areaEntities.filter(entity=>entity.entity_id.startsWith("sensor.")).slice(0,Math.max(0,remaining));
+  if(readings.length){cards.push(bubbleSeparator(t("climate"),"mdi:gauge"));cards.push({type:"grid",square:false,columns:2,cards:readings.map(entity=>entityToCard(entity,options,hass))});}
   if(!cards.length)cards.push({type:"markdown",content:t("noEntities")});
   return bubblePopup({hash:getRoomHash(area),name:area.name,icon:area.icon||"mdi:home-outline",cards});
 }
