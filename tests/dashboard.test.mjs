@@ -68,6 +68,16 @@ test('area view limits generated controls and preserves entity IDs', () => {
   assert.equal(controls[0].entity, 'light.a');
 });
 
+test('room view shows read-only sensor values and security states', () => {
+  const entities = [{ entity_id: 'sensor.temperature', area_id: 'living' }, { entity_id: 'binary_sensor.window', area_id: 'living' }];
+  const view = buildAreaView(area, entities, [], makeHass({ 'sensor.temperature': { device_class: 'temperature' }, 'binary_sensor.window': { device_class: 'window' } }), {});
+  const stack = view.sections[0].cards[1];
+  const controls = stack.cards.filter(card => card.type === 'grid').flatMap(card => card.cards);
+  assert.deepEqual(controls.map(card => card.entity).sort(), ['binary_sensor.window', 'sensor.temperature']);
+  assert.ok(controls.every(card => card.button_type === 'state' && card.show_state === true));
+  assert.ok(controls.every(card => card.button_action.tap_action.action === 'more-info'));
+});
+
 test('empty area view shows a useful fallback', () => {
   const view = buildAreaView(area, [], [], makeHass(), {});
   assert.equal(view.sections[0].cards[1].type, 'markdown');
