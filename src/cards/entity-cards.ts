@@ -21,6 +21,7 @@ export function groupRoomEntities(entities: HassEntity[]): RoomEntityGroup[] {
     { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"] },
     { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"] },
     { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"] },
+    { titleKey: "security", icon: "mdi:shield-home", domains: ["binary_sensor"] },
     { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"] },
   ];
 
@@ -92,6 +93,11 @@ export function entityCardTemplate(domain: string, options: StrategyConfig = {})
 export function entityToCard(entity: HassEntity, options: StrategyConfig, hass?: HomeAssistant): LovelaceCard {
   const domain = getDomain(entity.entity_id);
   if (domain === "media_player") return mediaPlayerToCard(entity.entity_id, options);
+  if (domain === "binary_sensor" || domain === "sensor") return {
+    type: "custom:bubble-card", card_type: "button", button_type: "state",
+    entity: entity.entity_id, show_state: true,
+    button_action: { tap_action: { action: "more-info" } },
+  };
   if (domain === "light") return lightToCard(entity.entity_id, options, hass);
   return entityToBubbleCard(entity, options, hass);
 }
