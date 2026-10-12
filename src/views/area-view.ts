@@ -30,6 +30,12 @@ export function buildAreaView(
       ...(compact.length ? [{ type: "grid", square: false, columns: 2, cards: compact.map((entity) => entityToCard(entity, options, hass)) }] : [])];
   });
 
+  const readings = roomEntities.filter((entity) => entity.entity_id.startsWith("sensor."));
+  if (readings.length) {
+    cards.push(bubbleSeparator(t("climate"), "mdi:gauge"));
+    cards.push({ type: "grid", square: false, columns: 2, cards: readings.map((entity) => entityToCard(entity, options, hass)) });
+  }
+
   return {
     type: "sections",
     max_columns: 3,
