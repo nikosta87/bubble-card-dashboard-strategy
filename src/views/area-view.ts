@@ -38,7 +38,7 @@ export function buildAreaView(
 
   return {
     type: "sections",
-    max_columns: 3,
+    max_columns: 2,
     sections: [
       {
         type: "grid",
