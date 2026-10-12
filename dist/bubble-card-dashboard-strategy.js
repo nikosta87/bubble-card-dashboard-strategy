@@ -137,7 +137,16 @@ function entityBelongsToArea(entity, areaId, devices) {
     return true;
   }
   if (!entity.area_id && entity.device_id) {
-    return devices.some((device) => device.id === entity.device_id && device.area_id === areaId && !device.disabled_by);
+    const byId = new Map(devices.map((device) => [device.id, device]));
+    const visited = /* @__PURE__ */ new Set();
+    let deviceId = entity.device_id;
+    while (deviceId && !visited.has(deviceId)) {
+      visited.add(deviceId);
+      const device = byId.get(deviceId);
+      if (!device || device.disabled_by) return false;
+      if (device.area_id) return device.area_id === areaId;
+      deviceId = device.via_device_id;
+    }
   }
   return false;
 }
@@ -821,9 +830,94 @@ function useAdvancedControls(options) {
   return options.enable_advanced_controls ?? DEFAULT_ENABLE_ADVANCED_CONTROLS;
 }
 
+// src/i18n.ts
+var STRINGS = {
+  en: {
+    lights: "Lights",
+    security: "Security",
+    climate: "Climate",
+    batteries: "Batteries",
+    media: "Media",
+    covers: "Covers",
+    scenes: "Scenes",
+    devices: "Devices",
+    rooms: "Rooms",
+    on: "On",
+    off: "Off",
+    allOn: "All on",
+    allOff: "All off",
+    alarm: "Alarm",
+    locks: "Locks",
+    intrusion: "Intrusion detection",
+    lock: "Lock",
+    unlock: "Unlock",
+    smokeAndLeaks: "Smoke & Leaks",
+    doorsWindowsOpen: "Doors & Windows \u2013 Open",
+    doorsWindowsClosed: "Doors & Windows \u2013 Closed",
+    motionAndPresence: "Motion & Presence",
+    critical: "Critical",
+    low: "Low",
+    ok: "OK",
+    armAway: "Away",
+    armHome: "Home",
+    disarm: "Disarm",
+    noEntities: "No visible entities found for this area."
+  },
+  de: {
+    lights: "Licht",
+    security: "Sicherheit",
+    climate: "Klima",
+    batteries: "Batterien",
+    media: "Medien",
+    covers: "Rollos",
+    scenes: "Szenen",
+    devices: "Ger\xE4te",
+    rooms: "R\xE4ume",
+    on: "An",
+    off: "Aus",
+    allOn: "Alle an",
+    allOff: "Alle aus",
+    alarm: "Alarm",
+    locks: "Schl\xF6sser",
+    intrusion: "Einbrucherkennung",
+    lock: "Abschlie\xDFen",
+    unlock: "Aufschlie\xDFen",
+    smokeAndLeaks: "Rauch & Lecks",
+    doorsWindowsOpen: "T\xFCren & Fenster \u2013 Offen",
+    doorsWindowsClosed: "T\xFCren & Fenster \u2013 Geschlossen",
+    motionAndPresence: "Bewegung & Anwesenheit",
+    critical: "Kritisch",
+    low: "Niedrig",
+    ok: "OK",
+    armAway: "Abwesend",
+    armHome: "Zuhause",
+    disarm: "Entsch\xE4rfen",
+    noEntities: "Keine sichtbaren Entit\xE4ten f\xFCr diesen Bereich."
+  }
+};
+function getLanguage(hass) {
+  const raw = (hass.language || hass.locale?.language || "en").toLowerCase();
+  return raw.startsWith("de") ? "de" : "en";
+}
+function createTranslator(hass) {
+  const language = getLanguage(hass);
+  return (key) => STRINGS[language][key] ?? STRINGS.en[key];
+}
+
 // src/views/area-view.ts
 function buildAreaView(area, entities, devices, hass, options) {
-  const cards = getAreaEntities(area.area_id, entities, devices, hass, options).slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA).map((entity) => entityToCard(entity, options, hass));
+  const roomEntities = getAreaEntities(area.area_id, entities, devices, hass, options).slice(0, options.max_entities_per_area ?? DEFAULT_MAX_ENTITIES_PER_AREA);
+  const t = createTranslator(hass);
+  const cards = groupRoomEntities(roomEntities).flatMap((group) => {
+    if (!group.entities.length) return [];
+    const wide = group.entities.filter((entity) => getEntityPresentation(entity, options, hass) === "wide");
+    const compact = group.entities.filter((entity) => getEntityPresentation(entity, options, hass) !== "wide");
+    return [
+      bubbleSeparator(t(group.titleKey), group.icon),
+      ...wide.length ? [{ type: "grid", square: false, columns: 1, cards: wide.map((entity) => entityToCard(entity, options, hass)) }] : [],
+      ...compact.length ? [{ type: "grid", square: false, columns: 2, cards: compact.map((entity) => entityToCard(entity, options, hass)) }] : []
+    ];
+  });
   return {
     type: "sections",
     max_columns: 3,
@@ -832,12 +926,7 @@ function buildAreaView(area, entities, devices, hass, options) {
         type: "grid",
         cards: [
           bubbleSeparator(area.name, area.icon || "mdi:home-outline"),
-          cards.length ? {
-            type: "grid",
-            square: false,
-            columns: 2,
-            cards
-          } : {
+          cards.length ? { type: "vertical-stack", cards } : {
             type: "markdown",
             content: "No visible entities found for this area."
           },
@@ -960,80 +1049,6 @@ function roomStatusSubButton(entity) {
     fill_width: false,
     tap_action: { action: domain === "light" ? "toggle" : "more-info" }
   };
-}
-
-// src/i18n.ts
-var STRINGS = {
-  en: {
-    lights: "Lights",
-    security: "Security",
-    climate: "Climate",
-    batteries: "Batteries",
-    media: "Media",
-    covers: "Covers",
-    scenes: "Scenes",
-    devices: "Devices",
-    rooms: "Rooms",
-    on: "On",
-    off: "Off",
-    allOn: "All on",
-    allOff: "All off",
-    alarm: "Alarm",
-    locks: "Locks",
-    intrusion: "Intrusion detection",
-    lock: "Lock",
-    unlock: "Unlock",
-    smokeAndLeaks: "Smoke & Leaks",
-    doorsWindowsOpen: "Doors & Windows \u2013 Open",
-    doorsWindowsClosed: "Doors & Windows \u2013 Closed",
-    motionAndPresence: "Motion & Presence",
-    critical: "Critical",
-    low: "Low",
-    ok: "OK",
-    armAway: "Away",
-    armHome: "Home",
-    disarm: "Disarm",
-    noEntities: "No visible entities found for this area."
-  },
-  de: {
-    lights: "Licht",
-    security: "Sicherheit",
-    climate: "Klima",
-    batteries: "Batterien",
-    media: "Medien",
-    covers: "Rollos",
-    scenes: "Szenen",
-    devices: "Ger\xE4te",
-    rooms: "R\xE4ume",
-    on: "An",
-    off: "Aus",
-    allOn: "Alle an",
-    allOff: "Alle aus",
-    alarm: "Alarm",
-    locks: "Schl\xF6sser",
-    intrusion: "Einbrucherkennung",
-    lock: "Abschlie\xDFen",
-    unlock: "Aufschlie\xDFen",
-    smokeAndLeaks: "Rauch & Lecks",
-    doorsWindowsOpen: "T\xFCren & Fenster \u2013 Offen",
-    doorsWindowsClosed: "T\xFCren & Fenster \u2013 Geschlossen",
-    motionAndPresence: "Bewegung & Anwesenheit",
-    critical: "Kritisch",
-    low: "Niedrig",
-    ok: "OK",
-    armAway: "Abwesend",
-    armHome: "Zuhause",
-    disarm: "Entsch\xE4rfen",
-    noEntities: "Keine sichtbaren Entit\xE4ten f\xFCr diesen Bereich."
-  }
-};
-function getLanguage(hass) {
-  const raw = (hass.language || hass.locale?.language || "en").toLowerCase();
-  return raw.startsWith("de") ? "de" : "en";
-}
-function createTranslator(hass) {
-  const language = getLanguage(hass);
-  return (key) => STRINGS[language][key] ?? STRINGS.en[key];
 }
 
 // src/cards/auto-entities.ts
