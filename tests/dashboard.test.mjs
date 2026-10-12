@@ -16,6 +16,17 @@ test('entity area overrides device area; disabled devices are excluded', () => {
   assert.equal(entityBelongsToArea({ entity_id: 'light.a', device_id: 'lamp' }, 'living', [{ ...devices[0], disabled_by: 'user' }]), false);
 });
 
+test('parent device area is inherited unless a child has an explicit area', () => {
+  const hierarchy = [
+    { id: 'bridge', area_id: 'living' },
+    { id: 'child', via_device_id: 'bridge' },
+    { id: 'override', via_device_id: 'bridge', area_id: 'office' },
+  ];
+  assert.equal(entityBelongsToArea({ entity_id: 'light.child', device_id: 'child' }, 'living', hierarchy), true);
+  assert.equal(entityBelongsToArea({ entity_id: 'light.override', device_id: 'override' }, 'living', hierarchy), false);
+  assert.equal(entityBelongsToArea({ entity_id: 'light.child', device_id: 'child' }, 'living', [{ id: 'child', via_device_id: 'child' }]), false);
+});
+
 test('discovery excludes hidden, disabled, absent and explicitly ignored entities', () => {
   const entities = [
     { entity_id: 'light.visible', area_id: 'living' },
@@ -51,8 +62,10 @@ test('area view limits generated controls and preserves entity IDs', () => {
   const view = buildAreaView(area, entities, [], makeHass({ 'light.a': {}, 'light.b': {} }), { max_entities_per_area: 1 });
   assert.equal(view.type, 'sections');
   const grid = view.sections[0].cards[1];
-  assert.equal(grid.cards.length, 1);
-  assert.equal(grid.cards[0].entity, 'light.a');
+  assert.equal(grid.type, 'vertical-stack');
+  const controls = grid.cards.filter(card => card.type === 'grid').flatMap(card => card.cards);
+  assert.equal(controls.length, 1);
+  assert.equal(controls[0].entity, 'light.a');
 });
 
 test('empty area view shows a useful fallback', () => {
