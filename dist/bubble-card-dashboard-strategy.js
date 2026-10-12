@@ -3,7 +3,7 @@ var STRATEGY_TYPE = "bubble-card-dashboard";
 var DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 var VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 var EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-var VERSION = "0.25.0";
+var VERSION = "0.26.0";
 var DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 var DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
 var DEFAULT_ROOM_ORDER = "alphabetical";
@@ -15,6 +15,7 @@ var ROOMS_POPUP_HASH = "#rooms";
 var DOMAIN_CARD_TYPES = {
   alarm_control_panel: "button",
   button: "button",
+  binary_sensor: "button",
   climate: "climate",
   cover: "cover",
   fan: "button",
@@ -26,6 +27,7 @@ var DOMAIN_CARD_TYPES = {
   number: "button",
   scene: "button",
   script: "button",
+  sensor: "button",
   select: "select",
   input_number: "button",
   input_select: "select",
@@ -643,6 +645,7 @@ function groupRoomEntities(entities) {
     { titleKey: "media", icon: "mdi:speaker", domains: ["media_player"] },
     { titleKey: "covers", icon: "mdi:window-shutter", domains: ["cover"] },
     { titleKey: "scenes", icon: "mdi:palette", domains: ["scene", "script", "button"] },
+    { titleKey: "security", icon: "mdi:shield-home", domains: ["binary_sensor"] },
     { titleKey: "devices", icon: "mdi:power-plug", domains: ["alarm_control_panel", "input_boolean", "input_number", "input_select", "lock", "number", "select", "switch", "vacuum"] }
   ];
   return groupDefinitions.map((definition) => ({
@@ -686,6 +689,14 @@ function entityCardTemplate(domain, options = {}) {
 function entityToCard(entity, options, hass) {
   const domain = getDomain(entity.entity_id);
   if (domain === "media_player") return mediaPlayerToCard(entity.entity_id, options);
+  if (domain === "binary_sensor" || domain === "sensor") return {
+    type: "custom:bubble-card",
+    card_type: "button",
+    button_type: "state",
+    entity: entity.entity_id,
+    show_state: true,
+    button_action: { tap_action: { action: "more-info" } }
+  };
   if (domain === "light") return lightToCard(entity.entity_id, options, hass);
   return entityToBubbleCard(entity, options, hass);
 }
@@ -918,6 +929,11 @@ function buildAreaView(area, entities, devices, hass, options) {
       ...compact.length ? [{ type: "grid", square: false, columns: 2, cards: compact.map((entity) => entityToCard(entity, options, hass)) }] : []
     ];
   });
+  const readings = roomEntities.filter((entity) => entity.entity_id.startsWith("sensor."));
+  if (readings.length) {
+    cards.push(bubbleSeparator(t("climate"), "mdi:gauge"));
+    cards.push({ type: "grid", square: false, columns: 2, cards: readings.map((entity) => entityToCard(entity, options, hass)) });
+  }
   return {
     type: "sections",
     max_columns: 3,
@@ -1524,6 +1540,11 @@ function buildRoomPopup(area, entities, devices, hass, options, t) {
     cards.push(bubbleSeparator(t(group.titleKey), group.icon));
     cards.push(...buildResponsiveEntityGrids(group.entities, options, hass));
   });
+  const readings = areaEntities.filter((entity) => entity.entity_id.startsWith("sensor.")).slice(0, Math.max(0, remaining));
+  if (readings.length) {
+    cards.push(bubbleSeparator(t("climate"), "mdi:gauge"));
+    cards.push({ type: "grid", square: false, columns: 2, cards: readings.map((entity) => entityToCard(entity, options, hass)) });
+  }
   if (!cards.length) cards.push({ type: "markdown", content: t("noEntities") });
   return bubblePopup({ hash: getRoomHash(area), name: area.name, icon: area.icon || "mdi:home-outline", cards });
 }
