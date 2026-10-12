@@ -4,7 +4,7 @@ export const STRATEGY_TYPE = "bubble-card-dashboard";
 export const DASHBOARD_ELEMENT = "ll-strategy-dashboard-bubble-card-dashboard";
 export const VIEW_ELEMENT = "ll-strategy-view-bubble-card-dashboard";
 export const EDITOR_ELEMENT = "bubble-card-dashboard-strategy-editor";
-export const VERSION = "0.25.0";
+export const VERSION = "0.26.0";
 
 export const DEFAULT_MAX_ENTITIES_PER_AREA = 24;
 export const DEFAULT_ENABLE_ADVANCED_CONTROLS = true;
@@ -19,6 +19,7 @@ export const ROOMS_POPUP_HASH = "#rooms";
 export const DOMAIN_CARD_TYPES: Record<string, string> = {
   alarm_control_panel: "button",
   button: "button",
+  binary_sensor: "button",
   climate: "climate",
   cover: "cover",
   fan: "button",
@@ -30,6 +31,7 @@ export const DOMAIN_CARD_TYPES: Record<string, string> = {
   number: "button",
   scene: "button",
   script: "button",
+  sensor: "button",
   select: "select",
   input_number: "button",
   input_select: "select",
