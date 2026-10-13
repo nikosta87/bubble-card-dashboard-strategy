@@ -1150,7 +1150,7 @@ var SUMMARIES = [
   }
 ];
 function getActiveSummaries(areas, entities, devices, hass, options) {
-  return SUMMARIES.filter((summary) => isSummaryEnabled(summary, options)).map((summary) => ({ ...summary, entries: resolveEntries(summary, areas, entities, devices, hass, options) })).filter((summary) => summaryHasContent(summary, hass));
+  return SUMMARIES.filter((summary) => isSummaryEnabled(summary, options)).map((summary) => ({ ...summary, entries: resolveEntries(summary, areas, entities, devices, hass, options), ...summary.kind === "domain" ? { allStateIds: Object.fromEntries(Object.keys(hass.states).filter((id) => summary.domains.includes(getDomain(id))).map((id) => [id, true])) } : {} })).filter((summary) => summaryHasContent(summary, hass));
 }
 function isSummaryEnabled(summary, options) {
   const value = options[summary.configKey];
@@ -1239,17 +1239,17 @@ function buildStateGroupedCards(summary, options, t) {
     stateSeparator(
       t("on"),
       "mdi:toggle-switch",
-      stateCountExpression(summary.domains, "on"),
+      stateCountExpression(summary.domains, "on", summary.entries.map((entry) => entry.entity.entity_id)),
       isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : void 0
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options) }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options), exclude: outOfScopeEntities(summary) }),
     stateSeparator(
       t("off"),
       "mdi:toggle-switch-off-outline",
-      stateCountExpression(summary.domains, "off"),
+      stateCountExpression(summary.domains, "off", summary.entries.map((entry) => entry.entity.entity_id)),
       isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : void 0
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options) })
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options), exclude: outOfScopeEntities(summary) })
   ];
 }
 function stateSeparator(name, icon, countExpression, master) {
@@ -1277,13 +1277,17 @@ function masterSubButton(name, icon, service) {
     }
   };
 }
-function stateCountExpression(domains, bucket) {
+function stateCountExpression(domains, bucket, allowedIds) {
   const conditions = domains.flatMap(
     (domain) => (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map(
       (state) => `(s.entity_id.startsWith('${domain}.') && s.state === '${state}')`
     )
   ).join(" || ");
-  return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
+  return `Object.values(hass.states).filter(s => ${JSON.stringify(allowedIds)}.includes(s.entity_id) && (${conditions || "false"})).length`;
+}
+function outOfScopeEntities(summary) {
+  const allowed = new Set(summary.entries.map((entry) => entry.entity.entity_id));
+  return Object.keys(summary.allStateIds ?? {}).filter((id) => !allowed.has(id)).map((entity) => ({ entity_id: entity }));
 }
 function buildStateIncludes(domains, bucket, options) {
   return domains.flatMap(
