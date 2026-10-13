@@ -58,7 +58,7 @@ type ThemeEntry = {
   entity: HassEntity;
 };
 
-type ResolvedDomainSummary = DomainSummary & { entries: ThemeEntry[] };
+type ResolvedDomainSummary = DomainSummary & { entries: ThemeEntry[]; allStateIds?: Record<string, true> };
 type ResolvedSpecialSummary = SpecialSummary & { entries: ThemeEntry[] };
 type ResolvedSummary = ResolvedDomainSummary | ResolvedSpecialSummary;
 
@@ -140,7 +140,7 @@ export function getActiveSummaries(
   options: StrategyConfig,
 ): ResolvedSummary[] {
   return SUMMARIES.filter((summary) => isSummaryEnabled(summary, options))
-    .map((summary): ResolvedSummary => ({ ...summary, entries: resolveEntries(summary, areas, entities, devices, hass, options) }))
+    .map((summary): ResolvedSummary => ({ ...summary, entries: resolveEntries(summary, areas, entities, devices, hass, options), ...(summary.kind === "domain" ? { allStateIds: Object.fromEntries(Object.keys(hass.states).filter(id => summary.domains.includes(getDomain(id))).map(id => [id, true])) } : {}) }))
     .filter((summary) => summaryHasContent(summary, hass));
 }
 
@@ -286,17 +286,17 @@ function buildStateGroupedCards(summary: ResolvedDomainSummary, options: Strateg
     stateSeparator(
       t("on"),
       "mdi:toggle-switch",
-      stateCountExpression(summary.domains, "on"),
+      stateCountExpression(summary.domains, "on", summary.entries.map(entry => entry.entity.entity_id)),
       isLights ? masterSubButton(t("allOff"), "mdi:lightbulb-off", "light.turn_off") : undefined,
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options) }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "on", options), exclude: outOfScopeEntities(summary) }),
     stateSeparator(
       t("off"),
       "mdi:toggle-switch-off-outline",
-      stateCountExpression(summary.domains, "off"),
+      stateCountExpression(summary.domains, "off", summary.entries.map(entry => entry.entity.entity_id)),
       isLights ? masterSubButton(t("allOn"), "mdi:lightbulb-on", "light.turn_on") : undefined,
     ),
-    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options) }),
+    autoEntitiesGrid({ columns: summary.columns, include: buildStateIncludes(summary.domains, "off", options), exclude: outOfScopeEntities(summary) }),
   ];
 }
 
@@ -331,7 +331,7 @@ function masterSubButton(name: string, icon: string, service: string): LovelaceC
 
 // Client-side expression counting the entities that fall into a status bucket,
 // used to show/hide the matching separator.
-function stateCountExpression(domains: string[], bucket: "on" | "off"): string {
+function stateCountExpression(domains: string[], bucket: "on" | "off", allowedIds: string[]): string {
   const conditions = domains
     .flatMap((domain) =>
       (DOMAIN_STATE_BUCKETS[domain]?.[bucket] ?? []).map(
@@ -340,7 +340,14 @@ function stateCountExpression(domains: string[], bucket: "on" | "off"): string {
     )
     .join(" || ");
 
-  return `Object.values(hass.states).filter(s => ${conditions || "false"}).length`;
+  return `Object.values(hass.states).filter(s => ${JSON.stringify(allowedIds)}.includes(s.entity_id) && (${conditions || "false"})).length`;
+}
+
+function outOfScopeEntities(summary: ResolvedDomainSummary): AutoEntitiesFilter[] {
+  const allowed = new Set(summary.entries.map(entry => entry.entity.entity_id));
+  // auto-entities matches globally; explicitly exclude other entities so hidden
+  // rooms, ignored entities and unavailable registry entries cannot leak in.
+  return Object.keys(summary.allStateIds ?? {}).filter(id => !allowed.has(id)).map(entity => ({ entity_id: entity }));
 }
 
 function buildStateIncludes(domains: string[], bucket: "on" | "off", options: StrategyConfig): AutoEntitiesFilter[] {
