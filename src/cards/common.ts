@@ -18,6 +18,7 @@ export function bubblePopup(config: {
     icon: config.icon,
     popup_mode: "adaptive-dialog",
     popup_style: "bubble",
+    slide_to_close: "header",
     performance_mode: "performance",
     with_bottom_offset: true,
     full_width_on_mobile: true,
